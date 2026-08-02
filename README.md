@@ -29,6 +29,15 @@ The repo contains:
 - Direct Android PDF printing through `PrintManager`.
 - DOCX printing through the Windows Agent. Direct Android DOCX printing is not implemented yet; the app tells users to send DOCX files to the Windows computer instead.
 
+## Downloads
+
+For a quick install, download the latest build here:
+
+- [PrintR Android APK](https://github.com/JF-NZ/PrintR/releases/latest/download/PrintR.apk)
+- [PrintR Agent for Windows](https://github.com/JF-NZ/PrintR/releases/latest/download/PrintR-Agent-win-x64.zip)
+
+The Windows download is self-contained. Unzip it, launch `PrintR.Agent.exe`, and allow it through Windows Defender Firewall on Private networks when prompted. Android may ask you to allow installation from the app you used to open the APK.
+
 Screenshot TODOs live in [docs/screenshots.md](docs/screenshots.md).
 
 ## Run The Windows Agent
