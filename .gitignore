@@ -1,0 +1,16 @@
+.gradle/
+.kotlin/
+build/
+*/build/
+local.properties
+*.hprof
+
+bin/
+obj/
+TestResults/
+artifacts/
+
+.vs/
+.idea/
+*.user
+*.suo
