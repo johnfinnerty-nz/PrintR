@@ -153,7 +153,6 @@ The package is written to `printr-windows-agent\artifacts`. Unzip it on the Wind
 ## Troubleshooting
 
 See [docs/troubleshooting.md](docs/troubleshooting.md).
-See also [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for real-device setup issues.
 
 ## Security
 
