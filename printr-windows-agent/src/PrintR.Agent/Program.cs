@@ -15,19 +15,21 @@ if (!isFirstInstance)
 var builder = WebApplication.CreateBuilder(args);
 var settingsStore = new AgentSettingsStore();
 var settings = settingsStore.Load();
+var tlsCertificate = new TlsCertificateStore(settingsStore).LoadOrCreate();
 
 builder.WebHost.ConfigureKestrel(options =>
 {
-    options.Listen(IPAddress.Loopback, settings.Port);
+    options.Listen(IPAddress.Loopback, settings.Port, listen => listen.UseHttps(tlsCertificate.Certificate));
     foreach (var address in GetPrivateListenAddresses())
     {
-        options.Listen(address, settings.Port);
+        options.Listen(address, settings.Port, listen => listen.UseHttps(tlsCertificate.Certificate));
     }
 });
 builder.Services.Configure<FormOptions>(o => o.MultipartBodyLengthLimit = FileValidation.MaxUploadBytes);
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase);
 builder.Services.AddSingleton(settingsStore);
 builder.Services.AddSingleton(settings);
+builder.Services.AddSingleton(tlsCertificate);
 builder.Services.AddSingleton<JobStore>();
 builder.Services.AddSingleton<PairingService>();
 builder.Services.AddHostedService<DiscoveryService>();
@@ -46,25 +48,29 @@ var app = builder.Build();
 var spoolDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PrintR Agent", "Spool");
 Directory.CreateDirectory(spoolDir);
 
-app.MapGet("/health", (IConversionBackendHealth conversionHealth) => Results.Json(new
+app.MapGet("/health", (IConversionBackendHealth conversionHealth, TlsCertificateInfo certificate) => Results.Json(new
 {
     app = "PrintR Agent",
     status = "ok",
-    version = "0.1.0",
+    version = AppInfo.Version,
+    scheme = "https",
+    tlsFingerprint = certificate.Fingerprint,
     supportedFormats = FileValidation.SupportedExtensions.Select(e => e.TrimStart('.')),
     pdfPrintTool = PdfPrintTool.GetStatus(),
     conversionBackends = conversionHealth.GetHealth()
 }));
 
-app.MapGet("/discovery-info", (AgentSettingsStore store) =>
+app.MapGet("/discovery-info", (AgentSettingsStore store, TlsCertificateInfo certificate) =>
 {
     var current = store.Load();
     return Results.Json(new
     {
         app = "PrintR Agent",
-        version = "0.1.0",
+        version = AppInfo.Version,
         instanceId = current.InstanceId,
         computerName = current.FriendlyName ?? Environment.MachineName,
+        scheme = "https",
+        tlsFingerprint = certificate.Fingerprint,
         requiresPairing = true
     });
 });
@@ -266,6 +272,7 @@ var uiThread = new Thread(() =>
         app.Services.GetRequiredService<JobStore>(),
         app.Services.GetRequiredService<IConversionBackendHealth>(),
         app.Services.GetRequiredService<PairingService>(),
+        app.Services.GetRequiredService<TlsCertificateInfo>(),
         () => _ = app.StopAsync());
     Application.Run(form);
 });

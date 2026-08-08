@@ -37,7 +37,7 @@ data class PrintRUiState(
 class PrintRViewModel(app: Application) : AndroidViewModel(app) {
     private val store = PairingStore(app)
     private val client = PrintRClient()
-    private val discovery = DiscoveryClient()
+    private val discovery = DiscoveryClient(app)
     private val _state = MutableStateFlow(PrintRUiState(pairing = store.load(), pairedComputers = store.loadAll(), options = store.loadOptions()))
     val state: StateFlow<PrintRUiState> = _state
 
@@ -91,7 +91,9 @@ class PrintRViewModel(app: Application) : AndroidViewModel(app) {
                 name = computer.name,
                 host = computer.host,
                 port = computer.port,
-                instanceId = computer.instanceId
+                instanceId = computer.instanceId,
+                scheme = computer.scheme,
+                tlsFingerprint = computer.tlsFingerprint
             )
         )
         _state.update { it.copy(status = PrintStatus.Idle, statusMessage = "Enter the pairing token, then test the connection.") }
@@ -250,6 +252,7 @@ class PrintRViewModel(app: Application) : AndroidViewModel(app) {
             e.message?.contains("Wrong", ignoreCase = true) == true -> e.message!!
             e.message?.contains("timeout", ignoreCase = true) == true -> "Computer offline or firewall blocked the connection."
             e.message?.contains("failed to connect", ignoreCase = true) == true -> "Computer offline or Windows Firewall blocked PrintR Agent."
+            e.message?.contains("certificate", ignoreCase = true) == true || e.message?.contains("TLS", ignoreCase = true) == true -> "The Windows Agent security certificate changed. Scan its QR code to pair again."
             e.message?.contains("Unsupported", ignoreCase = true) == true -> "Unsupported file. PrintR supports PDF, PNG, JPG/JPEG, TXT, and DOCX."
             e.message?.contains("DOCX", ignoreCase = true) == true -> e.message!!
             else -> e.message ?: "Print failed."

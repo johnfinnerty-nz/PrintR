@@ -7,7 +7,7 @@ using QRCoder;
 
 namespace PrintR.Agent;
 
-public sealed class PairingService(AgentSettingsStore settingsStore)
+public sealed class PairingService(AgentSettingsStore settingsStore, TlsCertificateInfo tlsCertificate)
 {
     public PairingPayload CreatePayload(IPAddress? preferredAddress = null)
     {
@@ -15,13 +15,15 @@ public sealed class PairingService(AgentSettingsStore settingsStore)
         var ip = preferredAddress ?? NetworkInfo.GetPrivateIps().FirstOrDefault() ?? IPAddress.Loopback;
         return new PairingPayload(
             "PrintR Agent",
-            "0.1.0",
+            AppInfo.Version,
             settings.InstanceId!,
             settings.FriendlyName ?? Environment.MachineName,
             Dns.GetHostName(),
             ip.ToString(),
             settings.Port,
-            settings.Token);
+            settings.Token,
+            "https",
+            tlsCertificate.Fingerprint);
     }
 
     public string CreatePayloadJson(IPAddress? preferredAddress = null) =>
@@ -46,12 +48,13 @@ public static class NetworkInfo
             .Distinct()
             .ToList();
 
-    public static IReadOnlyList<string> GetBoundInterfaces(int port) =>
-        GetPrivateIps().Select(ip => $"http://{ip}:{port}").Prepend($"http://127.0.0.1:{port}").ToList();
+    public static IReadOnlyList<string> GetBoundInterfaces(int port, string scheme = "https") =>
+        GetPrivateIps().Select(ip => $"{scheme}://{ip}:{port}").Prepend($"{scheme}://127.0.0.1:{port}").ToList();
 }
 
 public sealed class DiscoveryService(
     AgentSettingsStore settingsStore,
+    TlsCertificateInfo tlsCertificate,
     ILogger<DiscoveryService> logger) : BackgroundService
 {
     public const int DiscoveryPort = 8788;
@@ -87,11 +90,13 @@ public sealed class DiscoveryService(
                     var response = JsonSerializer.Serialize(new
                     {
                         app = "PrintR Agent",
-                        version = "0.1.0",
+                        version = AppInfo.Version,
                         instanceId = settings.InstanceId,
                         computerName = settings.FriendlyName ?? Environment.MachineName,
                         host = NetworkInfo.GetPrivateIps().FirstOrDefault()?.ToString() ?? Dns.GetHostName(),
                         port = settings.Port,
+                        scheme = "https",
+                        tlsFingerprint = tlsCertificate.Fingerprint,
                         requiresPairing = true
                     });
                     var bytes = System.Text.Encoding.UTF8.GetBytes(response);

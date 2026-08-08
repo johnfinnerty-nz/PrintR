@@ -4,6 +4,8 @@ build/
 */build/
 local.properties
 *.hprof
+printr-product-check*.png
+printr-window*.xml
 
 bin/
 obj/

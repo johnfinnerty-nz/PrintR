@@ -12,8 +12,14 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
+import java.security.MessageDigest
+import java.security.cert.CertificateException
+import java.security.cert.X509Certificate
+import java.util.Locale
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLContext
+import javax.net.ssl.X509TrustManager
 
 class PrintRClient(
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
@@ -38,7 +44,7 @@ class PrintRClient(
                 .post(body)
                 .build()
 
-            httpClient.newCall(request).execute().use { response ->
+            clientFor(pairing).newCall(request).execute().use { response ->
                 val text = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
                     throw IllegalStateException(toUsefulError(response.code, text))
@@ -75,14 +81,14 @@ class PrintRClient(
 
     suspend fun health(pairing: PairingDetails): Boolean = withContext(Dispatchers.IO) {
         val request = Request.Builder().url("${pairing.baseUrl}/health").get().build()
-        httpClient.newCall(request).execute().use { it.isSuccessful }
+        clientFor(pairing).newCall(request).execute().use { it.isSuccessful }
     }
 
     suspend fun pairTest(pairing: PairingDetails): PairTestResult = withContext(Dispatchers.IO) {
         val body = JSONObject().put("token", pairing.token).toString()
             .toRequestBody("application/json".toMediaTypeOrNull())
         val request = Request.Builder().url("${pairing.baseUrl}/pair/test").post(body).build()
-        httpClient.newCall(request).execute().use { response ->
+        clientFor(pairing).newCall(request).execute().use { response ->
             val text = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
                 throw IllegalStateException(if (response.code == 401) "Wrong pairing token." else text.ifBlank { "Pairing failed with HTTP ${response.code}" })
@@ -104,7 +110,7 @@ class PrintRClient(
             .get()
             .build()
 
-        httpClient.newCall(request).execute().use { response ->
+        clientFor(pairing).newCall(request).execute().use { response ->
             val text = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
                 throw IllegalStateException(toUsefulError(response.code, text))
@@ -120,7 +126,7 @@ class PrintRClient(
             .get()
             .build()
 
-        httpClient.newCall(request).execute().use { response ->
+        clientFor(pairing).newCall(request).execute().use { response ->
             val text = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
                 throw IllegalStateException(toUsefulError(response.code, text))
@@ -135,6 +141,21 @@ class PrintRClient(
         404 -> "Print job was not found on the Windows computer."
         415 -> "Unsupported file type."
         else -> body.ifBlank { "Request failed with HTTP $code" }
+    }
+
+    private fun clientFor(pairing: PairingDetails): OkHttpClient {
+        if (!pairing.scheme.equals("https", ignoreCase = true)) return httpClient
+
+        val fingerprint = normalizeTlsFingerprint(pairing.tlsFingerprint.orEmpty())
+        require(fingerprint.length == 64) { "This secure pairing is missing the TLS fingerprint. Scan the Windows Agent QR code again." }
+        val trustManager = FingerprintTrustManager(fingerprint)
+        val sslContext = SSLContext.getInstance("TLS")
+        sslContext.init(null, arrayOf(trustManager), null)
+        return httpClient.newBuilder()
+            .sslSocketFactory(sslContext.socketFactory, trustManager)
+            // The QR code pins the exact certificate, so the local IP address does not need a public DNS name.
+            .hostnameVerifier { _, _ -> true }
+            .build()
     }
 
     private fun copyUriToCache(context: Context, selected: SelectedFile): File {
@@ -176,6 +197,27 @@ class PrintRClient(
                 status = item.optString("status")
             )
         }.filter { it.name.isNotBlank() }.toList()
+    }
+}
+
+internal fun normalizeTlsFingerprint(value: String): String =
+    value.filter(Char::isLetterOrDigit).uppercase(Locale.US)
+
+private class FingerprintTrustManager(private val expectedFingerprint: String) : X509TrustManager {
+    override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
+
+    override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) = Unit
+
+    override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {
+        val certificate = chain.firstOrNull()
+            ?: throw CertificateException("The Windows Agent did not provide a TLS certificate.")
+        certificate.checkValidity()
+        val actualFingerprint = MessageDigest.getInstance("SHA-256")
+            .digest(certificate.encoded)
+            .joinToString("") { "%02X".format(Locale.US, it.toInt() and 0xFF) }
+        if (!actualFingerprint.equals(expectedFingerprint, ignoreCase = true)) {
+            throw CertificateException("The Windows Agent certificate no longer matches this pairing. Scan its QR code to pair again.")
+        }
     }
 }
 

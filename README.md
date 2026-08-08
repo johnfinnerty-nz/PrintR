@@ -1,6 +1,6 @@
 # PrintR
 
-PrintR is an MVP for printing from an Android phone through a Windows computer on the same Wi-Fi network.
+PrintR lets you print from an Android phone through a Windows computer on the same Wi-Fi network.
 
 Primary flow:
 
@@ -16,13 +16,13 @@ The repo contains:
 /docs                  Setup, troubleshooting, and security notes
 ```
 
-## MVP Status
+## Product Status
 
 - Android share target for PDFs, DOCX, images, text, and common document MIME types.
 - Android in-app file picker using Storage Access Framework.
-- Manual pairing by IP, port, and token.
+- Automatic LAN discovery, plus QR and manual pairing by IP, port, token, and TLS fingerprint.
 - Secure pairing storage using encrypted preferences when available, with a private fallback.
-- Windows HTTP API on port `8787` with token authentication.
+- Windows HTTPS API on port `8787`, with token authentication and certificate fingerprint pinning after pairing.
 - Windows printer enumeration, spool folder, job tracking, upload validation, mock print mode, TXT/image printing, DOCX-to-PDF conversion, and PDF command fallback.
 - Branded Android launcher icon and Windows executable/tray icon.
 - Printer controls for copies, color, duplex long/short edge, portrait/landscape, A4/US Letter, and page ranges where the backend supports them.
@@ -52,6 +52,8 @@ dotnet run --project .\src\PrintR.Agent\PrintR.Agent.csproj
 The agent shows the hostname, private LAN IP addresses, port, pairing token, printers, recent jobs, and service status.
 
 The agent creates a branded Windows tray icon. Use it to open the agent, pair an Android phone, review recent jobs, open firewall settings, toggle Start with Windows, test a page, toggle mock printing, or quit from the tray menu.
+
+When the Android app opens, it automatically looks for PrintR Agents on the current Wi-Fi network. The `Discover` button runs the scan again. Discovery only shows available computers; it never authorizes printing without pairing.
 
 Development mode without paper:
 
@@ -111,7 +113,7 @@ On the phone:
 Manual pairing:
 
 1. Open PrintR Agent.
-2. Copy the computer IP address, port, and pairing token.
+2. Copy the computer IP address, port, pairing token, and TLS fingerprint.
 3. Enter them in the Android pairing form.
 4. Tap `Test connection`.
 
@@ -138,7 +140,7 @@ Start with Windows:
 
 ## API
 
-- `GET /health` does not require a token.
+- `GET /health` does not require a token, but all API traffic uses HTTPS for new agents.
 - `GET /printers`, `POST /print`, and `GET /jobs/{id}` require `X-PrintR-Token`.
 - `POST /print` accepts multipart form fields: `file`, `printerName`, `copies`, `colorMode`, `duplex`, `duplexMode`, `orientation`, `paperSize`, and `pageRange`.
 - `GET /health` reports supported formats and DOCX converter availability.
@@ -167,4 +169,4 @@ See [docs/troubleshooting.md](docs/troubleshooting.md).
 
 See [docs/security.md](docs/security.md). Short version: PrintR is LAN-only by default, requires a strong pairing token, validates uploads, stores files in a dedicated spool folder, and does not support internet/cloud printing.
 
-Current limitation: local HTTP is protected by token authentication but is not encrypted on the LAN. Full local HTTPS with certificate pinning is a planned hardening step.
+New pairings use HTTPS and pin the Windows Agent certificate fingerprint from the QR code. Older HTTP pairings remain available only as a temporary compatibility path; remove and re-pair them to restore encrypted printing.

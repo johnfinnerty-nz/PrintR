@@ -16,7 +16,7 @@ class PrintRClientTest {
         server.enqueue(MockResponse().setResponseCode(200).setBody("""{"status":"ok"}"""))
         server.start()
         try {
-            val pairing = PairingDetails(host = server.hostName, port = server.port.toString(), token = "token")
+            val pairing = PairingDetails(host = server.hostName, port = server.port.toString(), token = "token", scheme = "http")
             assertTrue(PrintRClient().health(pairing))
         } finally {
             server.shutdown()

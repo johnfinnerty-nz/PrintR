@@ -6,21 +6,28 @@ object PairingPayloadParser {
         val host = readString(raw, "ipAddress").ifBlank { readString(raw, "host") }
         val port = readNumber(raw, "port") ?: "8787"
         val token = readString(raw, "token")
+        val scheme = readString(raw, "scheme").lowercase().ifBlank { "http" }
+        val fingerprint = normalizeTlsFingerprint(readString(raw, "tlsFingerprint"))
         require(host.isNotBlank() && token.isNotBlank()) { "Pairing code is missing host or token." }
+        require(scheme == "http" || scheme == "https") { "Pairing code has an unsupported connection type." }
+        require(scheme != "https" || fingerprint.length == 64) { "Pairing code is missing a valid TLS fingerprint." }
         return PairingDetails(
             name = readString(raw, "computerName"),
             host = host,
             port = port,
             token = token,
             instanceId = readString(raw, "instanceId"),
-            tlsFingerprint = readString(raw, "tlsFingerprint").ifBlank { null }
+            tlsFingerprint = fingerprint.ifBlank { null },
+            scheme = scheme
         )
     }
 
-    fun validateManual(host: String, port: String, token: String): String? = when {
+    fun validateManual(host: String, port: String, token: String, tlsFingerprint: String? = null, scheme: String = "https"): String? = when {
         host.isBlank() -> "Enter the Windows computer IP address."
         (port.toIntOrNull() ?: -1) !in 1..65535 -> "Enter a valid port."
         token.length < 16 -> "Pairing token looks too short."
+        scheme.lowercase() !in setOf("http", "https") -> "Enter a valid connection type."
+        scheme.equals("https", ignoreCase = true) && normalizeTlsFingerprint(tlsFingerprint.orEmpty()).length != 64 -> "Enter the TLS fingerprint shown by PrintR Agent."
         else -> null
     }
 

@@ -38,7 +38,8 @@ class PairingStore(context: Context) {
                 port = item.optString("port", "8787"),
                 token = item.optString("token"),
                 instanceId = item.optString("instanceId"),
-                tlsFingerprint = item.optString("tlsFingerprint").ifBlank { null }
+                tlsFingerprint = item.optString("tlsFingerprint").ifBlank { null },
+                scheme = item.optString("scheme").ifBlank { "http" }
             )
         }
     }
@@ -89,7 +90,8 @@ class PairingStore(context: Context) {
     private fun loadLegacy(): PairingDetails = PairingDetails(
         host = prefs.getString("host", "") ?: "",
         port = prefs.getString("port", "8787") ?: "8787",
-        token = prefs.getString("token", "") ?: ""
+        token = prefs.getString("token", "") ?: "",
+        scheme = "http"
     )
 
     private fun saveAll(items: List<PairingDetails>, defaultId: String) {
@@ -102,7 +104,8 @@ class PairingStore(context: Context) {
                 .put("port", it.port)
                 .put("token", it.token)
                 .put("instanceId", it.instanceId)
-                .put("tlsFingerprint", it.tlsFingerprint))
+                .put("tlsFingerprint", it.tlsFingerprint)
+                .put("scheme", it.scheme))
         }
         prefs.edit()
             .putString("paired_computers", array.toString())

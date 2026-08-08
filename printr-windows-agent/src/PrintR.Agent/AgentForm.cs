@@ -16,6 +16,7 @@ public sealed class AgentForm : Form
     private readonly JobStore _jobs;
     private readonly IConversionBackendHealth _conversionHealth;
     private readonly PairingService _pairingService;
+    private readonly TlsCertificateInfo _tlsCertificate;
     private readonly Action _requestShutdown;
     private readonly NotifyIcon _tray;
     private readonly RichTextBox _text = new()
@@ -33,7 +34,7 @@ public sealed class AgentForm : Form
     private readonly CheckBox _mockMode = new() { Text = "Mock print mode (no paper)", AutoSize = true };
     private bool _allowClose;
 
-    public AgentForm(AgentSettingsStore settingsStore, AgentSettings settings, IPrinterService printers, JobStore jobs, IConversionBackendHealth conversionHealth, PairingService pairingService, Action requestShutdown)
+    public AgentForm(AgentSettingsStore settingsStore, AgentSettings settings, IPrinterService printers, JobStore jobs, IConversionBackendHealth conversionHealth, PairingService pairingService, TlsCertificateInfo tlsCertificate, Action requestShutdown)
     {
         _settingsStore = settingsStore;
         _settings = settings;
@@ -41,6 +42,7 @@ public sealed class AgentForm : Form
         _jobs = jobs;
         _conversionHealth = conversionHealth;
         _pairingService = pairingService;
+        _tlsCertificate = tlsCertificate;
         _requestShutdown = requestShutdown;
         Text = "PrintR Agent";
         Width = 900;
@@ -150,6 +152,8 @@ public sealed class AgentForm : Form
             $"Port: {_settings.Port}",
             $"Pairing token: {Mask(settings.Token)}",
             $"Pairing status: ready for QR or manual pairing",
+            "Transport: HTTPS with certificate pinning",
+            $"TLS fingerprint: {_tlsCertificate.Fingerprint}",
             $"Mock print mode: {settings.MockPrintMode || string.Equals(Environment.GetEnvironmentVariable("PRINTR_MOCK_PRINT"), "true", StringComparison.OrdinalIgnoreCase)}",
             $"Supported file types: {string.Join(", ", FileValidation.SupportedExtensions)}",
             $"PDF print tool: {FormatPdfPrintTool()}",
