@@ -4,6 +4,8 @@ Most PrintR problems come down to one of three things: the phone and computer ca
 
 ## Android cannot find my computer
 
+PrintR searches automatically when the Android app opens. Give the scan a moment, then tap `Discover` to try again if the computer is not listed.
+
 First, check that the phone and Windows computer are connected to the same Wi-Fi network. Guest and public networks often prevent devices from talking to each other, and a VPN or client isolation setting can do the same.
 
 If discovery still does not find the computer, open PrintR Agent and use the private LAN IP address shown there for manual pairing.
@@ -14,9 +16,13 @@ Open PrintR Agent and choose `Pair Android phone` again, then scan the QR code s
 
 If you recently rotated the pairing token, the old QR code is no longer valid. Generate and scan the new one.
 
+## Certificate changed
+
+PrintR pins the Windows Agent certificate when you pair. If the Android app says the certificate changed, do not bypass the warning. Open the agent, choose `Pair Android phone`, and scan the current QR code again. This can happen after Windows is reinstalled or the agent's local settings are reset.
+
 ## Manual pairing fails
 
-Use the IP address shown in PrintR Agent and port `8787`, unless you changed the port. Copy the pairing token carefully, then tap `Test connection` in the Android app before trying to print.
+Use the IP address shown in PrintR Agent and port `8787`, unless you changed the port. Copy the pairing token and TLS fingerprint carefully, then tap `Test connection` in the Android app before trying to print.
 
 If the test times out, the most likely causes are a firewall rule, different Wi-Fi networks, or a network that blocks device-to-device traffic.
 
@@ -26,7 +32,7 @@ Pairing tokens can be rotated for security. If you rotated the token in PrintR A
 
 ## Firewall blocked
 
-Windows may be blocking the connection before it reaches PrintR Agent. Open Windows Defender Firewall, choose `Allow an app through firewall`, and allow PrintR Agent on `Private` networks.
+Windows may be blocking the connection before it reaches PrintR Agent. Open Windows Defender Firewall, choose `Allow an app through firewall`, and allow PrintR Agent on `Private` networks. Printing uses HTTPS on TCP port `8787`; discovery also uses UDP port `8788`.
 
 Leave `Public` network access disabled unless you have a specific reason to enable it. If Windows asks for permission the first time PrintR Agent starts, allow it only when the current network is trusted.
 

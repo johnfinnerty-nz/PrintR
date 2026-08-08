@@ -9,9 +9,10 @@ data class PairingDetails(
     val port: String = "8787",
     val token: String = "",
     val instanceId: String = "",
-    val tlsFingerprint: String? = null
+    val tlsFingerprint: String? = null,
+    val scheme: String = "https"
 ) {
-    val baseUrl: String get() = "http://$host:$port"
+    val baseUrl: String get() = "${scheme.lowercase()}://$host:$port"
     val isComplete: Boolean get() = host.isNotBlank() && port.isNotBlank() && token.isNotBlank()
     val displayName: String get() = name.ifBlank { host.ifBlank { "Unpaired computer" } }
 }
@@ -90,7 +91,9 @@ data class DiscoveryComputer(
     val host: String,
     val port: String,
     val instanceId: String,
-    val status: String
+    val status: String,
+    val scheme: String = "https",
+    val tlsFingerprint: String? = null
 )
 
 data class PairTestResult(

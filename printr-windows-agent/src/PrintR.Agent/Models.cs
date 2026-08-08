@@ -47,7 +47,8 @@ public sealed record AgentSettings(
     string? InstanceId = null,
     bool StartWithWindows = false,
     string? FriendlyName = null,
-    bool MockPrintMode = false);
+    bool MockPrintMode = false,
+    string? TlsCertificatePassword = null);
 
 public sealed record PairingPayload(
     string App,

@@ -80,6 +80,17 @@ public sealed class AgentSettingsStore
         }
     }
 
+    public AgentSettings UpdateTlsCertificatePassword(string password)
+    {
+        lock (_gate)
+        {
+            var current = Load();
+            var updated = current with { TlsCertificatePassword = password };
+            Save(updated);
+            return updated;
+        }
+    }
+
     private static AgentSettings Normalize(AgentSettings settings) =>
         settings with
         {

@@ -34,6 +34,14 @@ class SupportedDocumentTypesTest {
     }
 
     @Test
+    fun tls_fingerprint_normalization_accepts_common_display_format() {
+        assertEquals(
+            "AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899",
+            com.printr.android.data.normalizeTlsFingerprint("aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99:aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99")
+        )
+    }
+
+    @Test
     fun upload_request_includes_docx_filename_and_mime_type() {
         val temp = File.createTempFile("proposal", ".docx")
         temp.writeText("docx bytes")

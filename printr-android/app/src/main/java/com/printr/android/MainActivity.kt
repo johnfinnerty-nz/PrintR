@@ -40,6 +40,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -185,6 +186,10 @@ private fun PrintRApp(
     }
     val qrScanner = rememberLauncherForActivityResult(ScanContract()) { result ->
         result.contents?.let(viewModel::pairFromQr)
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.discoverComputers()
     }
 
     Column(
@@ -347,9 +352,11 @@ private fun connectionLabel(connection: com.printr.android.data.ConnectionState)
 @Composable
 private fun PairingSection(pairing: PairingDetails, onChange: (PairingDetails) -> Unit, onTest: () -> Unit) {
     val validPort = pairing.port.toIntOrNull()?.let { it in 1..65535 } == true
+    val securePairing = pairing.scheme.equals("https", ignoreCase = true)
+    val validFingerprint = pairing.tlsFingerprint?.filter(Char::isLetterOrDigit)?.length == 64
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Windows computer", style = MaterialTheme.typography.titleMedium)
-        Text("Scan the agent QR code, or enter the connection details manually.", style = MaterialTheme.typography.bodySmall)
+        Text("Scan the agent QR code, or enter the connection details manually. New pairings use encrypted HTTPS.", style = MaterialTheme.typography.bodySmall)
         OutlinedTextField(
             value = pairing.host,
             onValueChange = { onChange(pairing.copy(host = it.trim())) },
@@ -373,9 +380,21 @@ private fun PairingSection(pairing: PairingDetails, onChange: (PairingDetails) -
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
+        if (securePairing) {
+            OutlinedTextField(
+                value = pairing.tlsFingerprint.orEmpty(),
+                onValueChange = { onChange(pairing.copy(tlsFingerprint = it.filter(Char::isLetterOrDigit))) },
+                label = { Text("TLS fingerprint") },
+                supportingText = { Text("Copy this from PrintR Agent when pairing manually.") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        } else {
+            Text("This is a legacy HTTP pairing. Scan the current agent QR code to switch to encrypted printing.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
         Button(
             modifier = Modifier.fillMaxWidth(),
-            enabled = pairing.host.isNotBlank() && validPort && pairing.token.isNotBlank(),
+            enabled = pairing.host.isNotBlank() && validPort && pairing.token.isNotBlank() && (!securePairing || validFingerprint),
             onClick = onTest
         ) { Text("Test connection") }
     }
@@ -400,7 +419,7 @@ private fun ComputerLists(
                     Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(computer.displayName, style = MaterialTheme.typography.titleSmall)
-                            Text("${computer.host}:${computer.port}", style = MaterialTheme.typography.bodySmall)
+                            Text("${computer.scheme.uppercase()}://${computer.host}:${computer.port}", style = MaterialTheme.typography.bodySmall)
                         }
                         TextButton(onClick = { onChoose(computer) }) { Text("Use") }
                         TextButton(onClick = { onRename(computer) }) { Text("Rename") }
@@ -417,7 +436,7 @@ private fun ComputerLists(
                     Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(computer.name, style = MaterialTheme.typography.titleSmall)
-                            Text("${computer.host}:${computer.port} - ${computer.status}", style = MaterialTheme.typography.bodySmall)
+                            Text("${computer.scheme.uppercase()}://${computer.host}:${computer.port} - ${computer.status}", style = MaterialTheme.typography.bodySmall)
                         }
                         OutlinedButton(onClick = { onUseDiscovered(computer) }) { Text("Use") }
                     }
