@@ -1,6 +1,8 @@
 # PrintR
 
-PrintR lets you print from an Android phone through a Windows computer on the same Wi-Fi network.
+PrintR is a public software-development project by [John Finnerty](https://www.johnfinnerty.co.nz/), a Christchurch, New Zealand software developer. It explores local Wi-Fi printing from an Android phone through a Windows computer and includes Android, Windows-agent, setup, troubleshooting, and security work.
+
+Status: active development project with public test builds. It is not presented as a hosted printing service or a production support offering.
 
 Primary flow:
 
@@ -16,7 +18,7 @@ The repo contains:
 /docs                  Setup, troubleshooting, and security notes
 ```
 
-## Product Status
+## Development Status
 
 - Android share target for PDFs, DOCX, images, text, and common document MIME types.
 - Android in-app file picker using Storage Access Framework.
@@ -31,10 +33,10 @@ The repo contains:
 
 ## Downloads
 
-For a quick install, download the latest build here:
+For controlled testing, download the latest build here:
 
-- [PrintR Android APK](https://github.com/JF-NZ/PrintR/releases/latest/download/PrintR.apk)
-- [PrintR Agent for Windows](https://github.com/JF-NZ/PrintR/releases/latest/download/PrintR-Agent-win-x64.zip)
+- [PrintR Android APK](https://github.com/johnfinnerty-nz/PrintR/releases/latest/download/PrintR.apk)
+- [PrintR Agent for Windows](https://github.com/johnfinnerty-nz/PrintR/releases/latest/download/PrintR-Agent-win-x64.zip)
 
 The Windows download is self-contained. Unzip it, launch `PrintR.Agent.exe`, and allow it through Windows Defender Firewall on Private networks when prompted. Android may ask you to allow installation from the app you used to open the APK.
 
