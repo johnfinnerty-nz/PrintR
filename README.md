@@ -3,6 +3,7 @@
 PrintR is a public software-development project by [John Finnerty](https://www.johnfinnerty.co.nz/), a Christchurch, New Zealand software developer. It explores local network printing from an Android phone through a Windows or Linux computer and includes Android, desktop-agent, setup, troubleshooting, and security work.
 
 Status: active development project with public test builds. It is not presented as a hosted printing service or a production support offering.
+
 Version 1.1 adds a redesigned Windows dashboard, Android Print/Computers/Settings navigation, persistent deployment settings, more document formats, and a Linux CUPS agent. See [deployment and signing](docs/deployment.md), [Linux setup](printr-linux-agent/README.md), and [screenshots](docs/screenshots.md).
 
 See [1.1.0 validation results and remaining release gates](docs/validation-1.1.0.md).
