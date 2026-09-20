@@ -42,10 +42,12 @@ For controlled testing, download the latest build here:
 
 - [PrintR Android APK](https://github.com/johnfinnerty-nz/PrintR/releases/latest/download/PrintR.apk)
 - [PrintR Agent for Windows](https://github.com/johnfinnerty-nz/PrintR/releases/latest/download/PrintR-Agent-win-x64.zip)
+- [PrintR Agent for Linux x64](https://github.com/johnfinnerty-nz/PrintR/releases/latest/download/PrintR-Agent-linux-x64.tar.gz)
+- [Download checksums](https://github.com/johnfinnerty-nz/PrintR/releases/latest/download/SHA256SUMS.txt)
 
 The Windows download is self-contained. Unzip it, launch `PrintR.Agent.exe`, and allow it through Windows Defender Firewall on Private networks when prompted. Android may ask you to allow installation from the app you used to open the APK.
 
-The download links above refer to the last published GitHub release. Local 1.1 build artifacts are not automatically published.
+Version 1.1.0 includes a release-signed Android APK. Earlier debug-signed Android builds must be uninstalled before installing it, which clears saved pairings and preferences. The Windows executable is still unsigned. See the [1.1.0 release notes](docs/releases/1.1.0.md) for setup, validation and limitations.
 
 ## Run The Windows Agent
 

@@ -10,6 +10,8 @@ Android: run `gradlew testDebugUnitTest assembleDebug lintDebug` in `printr-andr
 
 The manual release-candidate workflow requires signing secrets and fails if they are absent. It uploads a signed APK artifact; it does not publish a GitHub release. The verify workflow builds and tests all three targets and uploads Windows, Linux and debug Android artifacts. Windows Authenticode signing is not configured because no certificate was supplied.
 
+A local Android release identity and signed APK are now available. Use `scripts/AndroidRelease.ps1` for verified local builds and portable backup export. Read [Android signing and key recovery](android-signing.md) before distribution. The private key remains outside Git, and GitHub signing secrets have not been configured.
+
 ## Supported file types
 
 | Files | Windows | Linux |
@@ -46,6 +48,6 @@ On Linux, pass the Linux binary to the same smoke script. It tests an isolated H
 
 Real conversion checks are provided by `scripts/create_conversion_fixtures.py` and `scripts/ConversionSmoke`. Generate DOCX/XLSX/PPTX/RTF fixtures using python-docx, openpyxl and python-pptx, export the corresponding ODT/ODS/ODP files with LibreOffice, then run `dotnet run --project scripts/ConversionSmoke -- input-directory output-directory`. The harness validates and converts all seven formats using the production converter.
 
-Before public release, sign and verify the Android APK and Windows EXE, test installation and upgrade on clean machines, and print representative documents on physical printers. Test copies, duplex, orientation and paper size with each supported driver. Confirm behavior when CUPS, SumatraPDF or LibreOffice is missing. Preserve the Android signing identity, and keep pairing QR codes and tokens out of screenshots.
+The 1.1.0 direct-download release includes a verified release-signed Android APK and an explicitly unsigned Windows EXE. Trusted Windows signing and broader clean-machine installation and upgrade checks remain follow-up work. Test copies, duplex, orientation and paper size with each supported driver. Confirm behavior when CUPS, SumatraPDF or LibreOffice is missing. Preserve the Android signing identity, and keep pairing QR codes and tokens out of screenshots. See the [release notes](releases/1.1.0.md) for the exact validation scope.
 
 Implementation references: [CUPS printing options](https://www.cups.org/doc/options.html) and [LibreOffice command-line options](https://help.libreoffice.org/latest/en-US/text/shared/guide/start_parameters.html).
