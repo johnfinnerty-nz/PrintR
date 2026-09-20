@@ -24,7 +24,11 @@ class PairingStore(context: Context) {
         context.getSharedPreferences("printr_pairing_private", Context.MODE_PRIVATE)
     }
 
-    fun load(): PairingDetails = loadAll().firstOrNull { it.id == prefs.getString("default_id", "") } ?: loadLegacy()
+    fun load(): PairingDetails {
+        val saved = loadAll()
+        return saved.firstOrNull { it.id == prefs.getString("default_id", "") }
+            ?: saved.firstOrNull() ?: PairingDetails()
+    }
 
     fun loadAll(): List<PairingDetails> {
         val raw = prefs.getString("paired_computers", null) ?: return listOfNotNull(loadLegacy().takeIf { it.isComplete })
@@ -57,7 +61,7 @@ class PairingStore(context: Context) {
     }
 
     fun clear() {
-        prefs.edit().remove("paired_computers").remove("default_id").apply()
+        prefs.edit().remove("paired_computers").remove("default_id").remove("host").remove("port").remove("token").apply()
     }
 
     fun loadOptions(): PrintOptions = PrintOptions(
@@ -87,7 +91,7 @@ class PairingStore(context: Context) {
             .apply()
     }
 
-    private fun loadLegacy(): PairingDetails = PairingDetails(
+    private fun loadLegacy(): PairingDetails = if (prefs.getString("host", "").isNullOrBlank()) PairingDetails() else PairingDetails(
         host = prefs.getString("host", "") ?: "",
         port = prefs.getString("port", "8787") ?: "8787",
         token = prefs.getString("token", "") ?: "",

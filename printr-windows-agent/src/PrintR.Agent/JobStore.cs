@@ -10,7 +10,7 @@ public sealed class JobStore
 
     public JobStore()
     {
-        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PrintR Agent");
+        var dir = AgentPaths.DataDirectory;
         Directory.CreateDirectory(dir);
         _path = Path.Combine(dir, "recent-jobs.json");
         Load();
@@ -51,10 +51,13 @@ public sealed class JobStore
         lock (FileGate)
         {
             if (!File.Exists(_path)) return;
-            var jobs = System.Text.Json.JsonSerializer.Deserialize<List<PrintJob>>(File.ReadAllText(_path)) ?? [];
+            List<PrintJob> jobs;
+            try { jobs = System.Text.Json.JsonSerializer.Deserialize<List<PrintJob>>(File.ReadAllText(_path)) ?? []; }
+            catch (System.Text.Json.JsonException) { File.Move(_path, _path + ".corrupt-" + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()); return; }
             foreach (var job in jobs.Take(50))
             {
-                _jobs[job.JobId] = job;
+                _jobs[job.JobId] = job.Status is JobStatus.Completed or JobStatus.Failed or JobStatus.Cancelled ? job :
+                    job with { Status = JobStatus.Failed, Message = "Agent restarted before completion. Check the printer queue before retrying.", ErrorMessage = "Interrupted by restart", CompletedAt = DateTimeOffset.UtcNow };
             }
         }
     }
@@ -64,7 +67,7 @@ public sealed class JobStore
         lock (FileGate)
         {
             var jobs = Recent().Take(50).ToList();
-            File.WriteAllText(_path, System.Text.Json.JsonSerializer.Serialize(jobs, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+            AgentPaths.WritePrivateText(_path, System.Text.Json.JsonSerializer.Serialize(jobs, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
         }
     }
 }

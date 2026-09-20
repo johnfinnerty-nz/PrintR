@@ -46,7 +46,7 @@ public sealed class CompositeDocumentConverter(IEnumerable<IDocumentConverter> c
             false,
             null,
             failures.Count == 0
-                ? "DOCX printing requires LibreOffice or Microsoft Word conversion support. Install LibreOffice or configure a converter path."
+                ? "Office document printing requires LibreOffice. Install LibreOffice or configure a converter path."
                 : string.Join(" ", failures),
             []);
     }
@@ -69,6 +69,7 @@ public sealed class LibreOfficeDocumentConverter : IDocumentConverter
     [
         @"C:\Program Files\LibreOffice\program\soffice.exe",
         @"C:\Program Files (x86)\LibreOffice\program\soffice.exe"
+        ,"/usr/bin/libreoffice", "/usr/bin/soffice", "/usr/local/bin/libreoffice"
     ];
 
     private readonly ILogger<LibreOfficeDocumentConverter> _logger;
@@ -98,7 +99,7 @@ public sealed class LibreOfficeDocumentConverter : IDocumentConverter
 
     public bool CanConvert(string inputPath, string outputFormat) =>
         _sofficePath is not null &&
-        string.Equals(Path.GetExtension(inputPath), ".docx", StringComparison.OrdinalIgnoreCase) &&
+        FileValidation.RequiresConversion(inputPath) &&
         string.Equals(outputFormat, "pdf", StringComparison.OrdinalIgnoreCase);
 
     public async Task<DocumentConversionResult> ConvertAsync(string inputPath, string outputDirectory, string outputFormat, CancellationToken cancellationToken)
@@ -119,6 +120,13 @@ public sealed class LibreOfficeDocumentConverter : IDocumentConverter
             CreateNoWindow = true
         };
         start.ArgumentList.Add("--headless");
+        // A separate profile avoids attaching to an open office session. Disable macros in that profile.
+        var profileDirectory = Path.Combine(outputDirectory, "lo-profile");
+        Directory.CreateDirectory(Path.Combine(profileDirectory, "user"));
+        AgentPaths.WritePrivateText(Path.Combine(profileDirectory, "user", "registrymodifications.xcu"),
+            "<?xml version=\"1.0\"?><oor:items xmlns:oor=\"http://openoffice.org/2001/registry\"><item oor:path=\"/org.openoffice.Office.Common/Security/Scripting\"><prop oor:name=\"MacroSecurityLevel\" oor:op=\"fuse\"><value>3</value></prop></item></oor:items>");
+        start.ArgumentList.Add("-env:UserInstallation=" + new Uri(Path.GetFullPath(profileDirectory) + Path.DirectorySeparatorChar).AbsoluteUri);
+        start.ArgumentList.Add("--norestore");
         start.ArgumentList.Add("--convert-to");
         start.ArgumentList.Add("pdf");
         start.ArgumentList.Add("--outdir");
@@ -150,13 +158,14 @@ public sealed class LibreOfficeDocumentConverter : IDocumentConverter
                 return missingOutput;
             }
 
-            return new DocumentConversionResult(true, expectedPdf, "Converted DOCX to PDF", []);
+            return new DocumentConversionResult(true, expectedPdf, "Converted document to PDF", []);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             TryKill(process);
             return new DocumentConversionResult(false, null, "LibreOffice conversion timed out.", []);
         }
+        catch (OperationCanceledException) { TryKill(process); throw; }
     }
 
     internal static string? ResolvePath(string? configuredPath, string? environmentPath, Func<string, bool> fileExists)
@@ -197,7 +206,7 @@ public sealed class WordComDocumentConverter : IDocumentConverter
     {
         _settings = settings;
         _logger = logger;
-        var available = Type.GetTypeFromProgID("Word.Application") is not null;
+        var available = OperatingSystem.IsWindows() && Type.GetTypeFromProgID("Word.Application") is not null;
         Status = new ConversionBackendStatus(available, Enabled: settings.WordComEnabled, Message: settings.WordComEnabled ? null : "Word COM conversion is disabled by default.");
     }
 

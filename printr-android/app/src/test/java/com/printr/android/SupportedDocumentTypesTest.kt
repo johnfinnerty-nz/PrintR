@@ -11,6 +11,15 @@ import java.io.File
 
 class SupportedDocumentTypesTest {
     @Test
+    fun expanded_formats_have_consistent_picker_and_upload_mimes() {
+        for (extension in listOf("xlsx", "pptx", "odt", "ods", "odp", "rtf", "csv", "bmp")) {
+            assertTrue(SupportedDocumentTypes.isSupported("file.$extension"))
+            assertTrue(SupportedDocumentTypes.PickerMimeTypes.contains(SupportedDocumentTypes.uploadMimeType("file.$extension", null)))
+        }
+        assertTrue(!SupportedDocumentTypes.isSupported("macro.docm"))
+        assertTrue(!SupportedDocumentTypes.isSupported("photo.heic"))
+    }
+    @Test
     fun docx_mime_is_supported_for_picker() {
         assertTrue(SupportedDocumentTypes.PickerMimeTypes.contains(SupportedDocumentTypes.Docx))
     }

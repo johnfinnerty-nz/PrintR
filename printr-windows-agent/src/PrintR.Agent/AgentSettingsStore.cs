@@ -10,7 +10,7 @@ public sealed class AgentSettingsStore
 
     public AgentSettingsStore()
     {
-        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PrintR Agent");
+        var dir = AgentPaths.ConfigDirectory;
         Directory.CreateDirectory(dir);
         _settingsPath = Path.Combine(dir, "settings.json");
     }
@@ -91,17 +91,37 @@ public sealed class AgentSettingsStore
         }
     }
 
+    public AgentSettings UpdatePreferences(string name, int port, string? libreOffice, string? pdfTool, int maxUpload, int timeout, bool keepFiles, bool mock)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name.Length > 80) throw new ArgumentException("Computer name must be 1 to 80 characters.");
+        if (port is < 1024 or > 65535) throw new ArgumentException("Port must be between 1024 and 65535.");
+        if (maxUpload is < 1 or > 100) throw new ArgumentException("Upload limit must be 1 to 100 MB.");
+        if (timeout is < 30 or > 600) throw new ArgumentException("Job timeout must be 30 to 600 seconds.");
+        foreach (var path in new[] { libreOffice, pdfTool })
+            if (!string.IsNullOrWhiteSpace(path) && (!Path.IsPathFullyQualified(path) || !File.Exists(path)))
+                throw new ArgumentException("Tool paths must point to an existing executable using an absolute path.");
+        lock (_gate)
+        {
+            var updated = Load() with { FriendlyName = name.Trim(), Port = port, LibreOfficePath = string.IsNullOrWhiteSpace(libreOffice) ? null : libreOffice.Trim(), PdfToolPath = string.IsNullOrWhiteSpace(pdfTool) ? null : pdfTool.Trim(), MaxUploadMegabytes = maxUpload, JobTimeoutSeconds = timeout, DebugKeepSpoolFiles = keepFiles, MockPrintMode = mock };
+            Save(updated);
+            return updated;
+        }
+    }
+
     private static AgentSettings Normalize(AgentSettings settings) =>
         settings with
         {
             InstanceId = string.IsNullOrWhiteSpace(settings.InstanceId) ? Guid.NewGuid().ToString() : settings.InstanceId,
-            FriendlyName = string.IsNullOrWhiteSpace(settings.FriendlyName) ? Environment.MachineName : settings.FriendlyName
+            FriendlyName = string.IsNullOrWhiteSpace(settings.FriendlyName) ? Environment.MachineName : settings.FriendlyName,
+            Port = settings.Port is >= 1024 and <= 65535 ? settings.Port : 8787,
+            MaxUploadMegabytes = Math.Clamp(settings.MaxUploadMegabytes, 1, 100),
+            JobTimeoutSeconds = Math.Clamp(settings.JobTimeoutSeconds, 30, 600)
         };
 
     private void Save(AgentSettings settings)
     {
         var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(_settingsPath, json);
+        AgentPaths.WritePrivateText(_settingsPath, json);
     }
 
     private static string CreateToken()

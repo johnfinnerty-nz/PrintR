@@ -12,13 +12,25 @@ android {
         applicationId = "com.printr.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.0.0"
+        versionCode = 3
+        versionName = "1.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildFeatures {
         compose = true
+    }
+
+    val signingValues = listOf("PRINTR_KEYSTORE", "PRINTR_STORE_PASSWORD", "PRINTR_KEY_ALIAS", "PRINTR_KEY_PASSWORD").map { System.getenv(it) }
+    require(signingValues.all { it.isNullOrBlank() } || signingValues.all { !it.isNullOrBlank() }) { "Configure all four PRINTR signing variables, or leave all unset for an unsigned release." }
+    if (signingValues.all { !it.isNullOrBlank() }) {
+        signingConfigs.create("deployment") {
+            storeFile = file(signingValues[0]!!)
+            storePassword = signingValues[1]
+            keyAlias = signingValues[2]
+            keyPassword = signingValues[3]
+        }
+        buildTypes.getByName("release").signingConfig = signingConfigs.getByName("deployment")
     }
 
     compileOptions {

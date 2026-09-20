@@ -4,7 +4,7 @@ Most PrintR problems come down to one of three things: the phone and computer ca
 
 ## Android cannot find my computer
 
-PrintR searches automatically when the Android app opens. Give the scan a moment, then tap `Discover` to try again if the computer is not listed.
+Without a saved pairing, PrintR searches when the Android app opens. With a saved pairing, it reconnects and loads printers. Open `Computers` and tap `Discover` to scan again.
 
 First, check that the phone and Windows computer are connected to the same Wi-Fi network. Guest and public networks often prevent devices from talking to each other, and a VPN or client isolation setting can do the same.
 
@@ -12,13 +12,13 @@ If discovery still does not find the computer, open PrintR Agent and use the pri
 
 ## QR pairing fails
 
-Open PrintR Agent and choose `Pair Android phone` again, then scan the QR code shown in that window. Make sure you are scanning the code from PrintR Agent, not an older screenshot or another app.
+Open the Windows agent and choose `Pair a phone`, then scan the current QR code from Android's `Computers` tab. On Linux, use the local `--pairing` command and enter its details manually.
 
 If you recently rotated the pairing token, the old QR code is no longer valid. Generate and scan the new one.
 
 ## Certificate changed
 
-PrintR pins the Windows Agent certificate when you pair. If the Android app says the certificate changed, do not bypass the warning. Open the agent, choose `Pair Android phone`, and scan the current QR code again. This can happen after Windows is reinstalled or the agent's local settings are reset.
+PrintR pins the agent certificate when you pair. If the Android app says the certificate changed, do not bypass the warning. Check the current pairing details on the computer and pair again. This can happen after reinstalling the computer or resetting the agent's local settings.
 
 ## Manual pairing fails
 
@@ -42,15 +42,15 @@ Check that the printer can print a test page directly from Windows. To separate 
 
 The recent jobs list in PrintR Agent usually contains the specific failure message.
 
-## DOCX conversion fails
+## Office or OpenDocument conversion fails
 
-DOCX files need a document converter on the Windows computer. Install LibreOffice and configure the `soffice.exe` path in PrintR Agent if it is not detected automatically.
+DOCX, XLSX, PPTX, ODT, ODS, ODP and RTF need LibreOffice on the computer. On Windows, configure the `soffice.exe` path in Settings if it is not detected automatically. On Linux, install Writer, Calc and Impress. See [Linux setup](../printr-linux-agent/README.md).
 
-PrintR intentionally rejects `.docm` and other macro-enabled Office files. This prevents macros from being run during conversion.
+PrintR intentionally rejects macro-enabled and legacy binary Office files. Keep LibreOffice patched and pair only trusted devices; format checks do not provide a complete document sandbox.
 
 ## PDF printing fails
 
-Configure `PRINTR_PDF_COMMAND` to a reliable PDF print tool such as SumatraPDF, then restart the agent. Also check that the uploaded or converted PDF opens locally on Windows.
+On Windows, install SumatraPDF or configure its executable in Settings. On Linux, check that `lpstat -p -d` lists a working CUPS printer. Also check that the uploaded or converted PDF opens locally.
 
 ## Printer options ignored
 

@@ -15,7 +15,7 @@ public sealed class TlsCertificateStore
     public TlsCertificateStore(AgentSettingsStore settingsStore)
     {
         _settingsStore = settingsStore;
-        var settingsDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PrintR Agent");
+        var settingsDirectory = AgentPaths.ConfigDirectory;
         Directory.CreateDirectory(settingsDirectory);
         _certificatePath = Path.Combine(settingsDirectory, CertificateFileName);
     }
@@ -38,6 +38,7 @@ public sealed class TlsCertificateStore
         var password = CreateSecret();
         using var created = CreateCertificate();
         File.WriteAllBytes(_certificatePath, created.Export(X509ContentType.Pfx, password));
+        if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(_certificatePath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         _settingsStore.UpdateTlsCertificatePassword(password);
         return ToInfo(LoadCertificate(File.ReadAllBytes(_certificatePath), password));
     }

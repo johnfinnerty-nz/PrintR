@@ -8,9 +8,10 @@
     <AssemblyName>PrintR.Agent</AssemblyName>
     <RootNamespace>PrintR.Agent</RootNamespace>
     <ApplicationIcon>Assets\PrintR.ico</ApplicationIcon>
-    <Version>1.0.0</Version>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>1.0.0.0</FileVersion>
+    <Version>1.1.0</Version>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
+    <FileVersion>1.1.0.0</FileVersion>
+    <EnableDefaultContentItems>false</EnableDefaultContentItems>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="QRCoder" Version="1.6.0" />

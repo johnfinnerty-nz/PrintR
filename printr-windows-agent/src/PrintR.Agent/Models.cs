@@ -48,7 +48,10 @@ public sealed record AgentSettings(
     bool StartWithWindows = false,
     string? FriendlyName = null,
     bool MockPrintMode = false,
-    string? TlsCertificatePassword = null);
+    string? TlsCertificatePassword = null,
+    string? PdfToolPath = null,
+    int MaxUploadMegabytes = 100,
+    int JobTimeoutSeconds = 180);
 
 public sealed record PairingPayload(
     string App,

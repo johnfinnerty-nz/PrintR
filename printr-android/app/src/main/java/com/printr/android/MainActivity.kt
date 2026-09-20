@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -46,6 +47,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -165,7 +171,14 @@ private fun PrintRTheme(themeMode: ThemeMode, content: @Composable () -> Unit) {
         ThemeMode.Light -> false
         ThemeMode.Dark -> true
     }
-    MaterialTheme(colorScheme = if (useDark) darkColorScheme() else lightColorScheme(), content = content)
+    val view = LocalView.current
+    SideEffect {
+        (view.context as? android.app.Activity)?.window?.let { window ->
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !useDark
+            WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = !useDark
+        }
+    }
+    MaterialTheme(colorScheme = if (useDark) darkColorScheme(primary = Color(0xFF79D5C9), primaryContainer = Color(0xFF004F49)) else lightColorScheme(primary = Color(0xFF007069), primaryContainer = Color(0xFFD6F3ED), secondaryContainer = Color(0xFFE8EFF5), background = Color(0xFFF6F8FA), surface = Color(0xFFF6F8FA)), content = content)
 }
 
 @Composable
@@ -179,6 +192,10 @@ private fun PrintRApp(
     val context = LocalContext.current
     var renameTarget by remember { mutableStateOf<PairingDetails?>(null) }
     var renameText by remember { mutableStateOf("") }
+    var selectedTab by rememberSaveable { mutableStateOf("Print") }
+    var showOptions by rememberSaveable { mutableStateOf(false) }
+    var confirmClear by remember { mutableStateOf(false) }
+    val busy = state.status in listOf(PrintStatus.Uploading, PrintStatus.Queued, PrintStatus.Converting, PrintStatus.Converted, PrintStatus.Printing)
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty()) {
             viewModel.setFiles(uris.map { uri -> context.selectedFileFromUri(uri) })
@@ -189,16 +206,17 @@ private fun PrintRApp(
     }
 
     LaunchedEffect(Unit) {
-        viewModel.discoverComputers()
+        if (state.pairing.isComplete) viewModel.refreshPrinters() else viewModel.discoverComputers()
     }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .navigationBarsPadding()
+            .statusBarsPadding()
             .imePadding()
             .verticalScroll(rememberScrollState())
-            .padding(start = 16.dp, top = 35.dp, end = 16.dp, bottom = 20.dp),
+            .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -210,13 +228,18 @@ private fun PrintRApp(
             androidx.compose.foundation.layout.Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text("PrintR", style = MaterialTheme.typography.headlineLarge)
-                Text("Send to a Windows printer", style = MaterialTheme.typography.bodySmall)
+                Text("Local printing, made simple", style = MaterialTheme.typography.bodySmall)
             }
-            ThemeSelector(themeMode, onThemeChange)
         }
-        Text("Send a document to a printer on your Windows computer.", style = MaterialTheme.typography.bodyLarge)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf("Print", "Computers", "Settings").forEach { tab ->
+                if (selectedTab == tab) Button(onClick = { selectedTab = tab }, modifier = Modifier.weight(1f)) { Text(tab) }
+                else OutlinedButton(onClick = { selectedTab = tab }, modifier = Modifier.weight(1f)) { Text(tab) }
+            }
+        }
         ConnectionBanner(state.connectionState, state.statusMessage)
 
+        if (selectedTab == "Computers") {
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 PairingSection(state.pairing, viewModel::editPairing, viewModel::testConnection)
@@ -242,9 +265,14 @@ private fun PrintRApp(
             },
             onUseDiscovered = viewModel::useDiscoveredComputer
         )
+        }
 
+        if (selectedTab == "Print") {
+        Text("What would you like to print?", style = MaterialTheme.typography.headlineSmall)
+        Text("Send files to a paired Windows or Linux computer on your network.", style = MaterialTheme.typography.bodyMedium)
         OutlinedButton(
             modifier = Modifier.fillMaxWidth(),
+            enabled = !busy,
             onClick = { picker.launch(SupportedDocumentTypes.PickerMimeTypes) }
         ) { Text("Choose files") }
         FileSection(state.selectedFiles)
@@ -255,21 +283,24 @@ private fun PrintRApp(
             onRefresh = viewModel::refreshPrinters,
             canRefresh = state.pairing.isComplete
         )
-        OptionsSection(state.options, viewModel::updateOptions)
+        TextButton(onClick = { showOptions = !showOptions }, enabled = !busy) {
+            Text(if (showOptions) "Hide print options" else "Print options: ${state.options.copies} ${if (state.options.copies == "1") "copy" else "copies"}, ${state.options.paperSize.uppercase()}")
+        }
+        if (showOptions && !busy) OptionsSection(state.options, viewModel::updateOptions)
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 modifier = Modifier.fillMaxWidth(),
-                enabled = state.pairing.isComplete && state.selectedFiles.isNotEmpty(),
+                enabled = !busy && state.pairing.isComplete && state.selectedFiles.isNotEmpty(),
                 onClick = viewModel::uploadSelectedFiles
-            ) { Text("Send to Windows computer") }
+            ) { Text(if (busy) "Processing files..." else "Send to computer") }
             Button(
                 modifier = Modifier.fillMaxWidth(),
-                enabled = state.selectedFiles.firstOrNull() != null,
+                enabled = !busy && state.selectedFiles.firstOrNull()?.let { SupportedDocumentTypes.displayType(it) == "PDF" } == true,
                 onClick = { state.selectedFiles.firstOrNull()?.let(onDirectPrint) }
-            ) { Text("Print directly from Android") }
+            ) { Text("Print PDF directly from Android") }
         }
-        StatusSection(state.status, state.statusMessage, state.warnings)
+        if (state.status != PrintStatus.Idle && state.status != PrintStatus.Connecting) StatusSection(state.status, state.statusMessage, state.warnings)
         if (state.status == PrintStatus.Failed) {
             Button(modifier = Modifier.fillMaxWidth(), onClick = viewModel::retryUpload, enabled = state.selectedFiles.isNotEmpty() && state.pairing.isComplete) { Text("Retry") }
         }
@@ -277,11 +308,30 @@ private fun PrintRApp(
             Text("Recent jobs", style = MaterialTheme.typography.titleMedium)
             state.recentJobs.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
         }
+        }
+        if (selectedTab == "Settings") {
+            Text("Make PrintR yours", style = MaterialTheme.typography.headlineSmall)
+            Text("Appearance", style = MaterialTheme.typography.titleMedium)
+            ThemeSelector(themeMode, onThemeChange)
+            Text("Saved print defaults", style = MaterialTheme.typography.titleMedium)
+            TextButton(onClick = { viewModel.updateOptions(PrintOptions()) }, enabled = !busy) { Text("Reset print defaults") }
+            if (!busy) OptionsSection(state.options, viewModel::updateOptions)
+            HorizontalDivider()
+            Text("Supported files", style = MaterialTheme.typography.titleMedium)
+            Text("PDF, PNG, JPG, BMP, TXT, CSV, DOCX, XLSX, PPTX, ODT, ODS, ODP and RTF. Office documents need LibreOffice on the computer. CSV prints as plain text. Maximum upload: 100 MB.", style = MaterialTheme.typography.bodySmall)
+            Text("PrintR 1.1.0", style = MaterialTheme.typography.bodySmall)
         if (state.pairedComputers.isNotEmpty()) {
-            TextButton(modifier = Modifier.fillMaxWidth(), onClick = viewModel::clearPairings) { Text("Clear saved pairings") }
+            TextButton(modifier = Modifier.fillMaxWidth(), onClick = { confirmClear = true }, enabled = !busy) { Text("Clear saved pairings") }
+        }
         }
     }
 
+    if (confirmClear) AlertDialog(
+        onDismissRequest = { confirmClear = false }, title = { Text("Clear saved computers?") },
+        text = { Text("You will need to pair with your computers again.") },
+        confirmButton = { TextButton(onClick = { viewModel.clearPairings(); confirmClear = false }) { Text("Clear") } },
+        dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancel") } }
+    )
     renameTarget?.let { target ->
         AlertDialog(
             onDismissRequest = { renameTarget = null },
@@ -355,7 +405,7 @@ private fun PairingSection(pairing: PairingDetails, onChange: (PairingDetails) -
     val securePairing = pairing.scheme.equals("https", ignoreCase = true)
     val validFingerprint = pairing.tlsFingerprint?.filter(Char::isLetterOrDigit)?.length == 64
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Windows computer", style = MaterialTheme.typography.titleMedium)
+        Text("Connect a computer", style = MaterialTheme.typography.titleMedium)
         Text("Scan the agent QR code, or enter the connection details manually. New pairings use encrypted HTTPS.", style = MaterialTheme.typography.bodySmall)
         OutlinedTextField(
             value = pairing.host,
@@ -553,9 +603,9 @@ private fun PrinterSection(
             OutlinedButton(enabled = canRefresh, onClick = onRefresh) { Text("Refresh") }
         }
         if (!canRefresh) {
-            Text("Pair with a Windows computer to load its printers.", style = MaterialTheme.typography.bodySmall)
+            Text("Open Computers to pair a Windows or Linux agent and load its printers.", style = MaterialTheme.typography.bodySmall)
         } else if (printers.isEmpty()) {
-            Text("No printers returned by the Windows Agent.", style = MaterialTheme.typography.bodySmall)
+            Text("No printers returned by the agent. Add a printer on the computer.", style = MaterialTheme.typography.bodySmall)
         } else {
             printers.forEach { printer ->
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

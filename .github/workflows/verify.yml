@@ -21,6 +21,42 @@ jobs:
       - name: Run agent tests
         working-directory: printr-windows-agent
         run: dotnet test -c Release
+      - name: Package Windows
+        shell: pwsh
+        run: ./printr-windows-agent/installer/Package.ps1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: HTTPS integration checks
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem printr-windows-agent/artifacts/publish-*/PrintR.Agent.exe | Select-Object -First 1
+          python scripts/smoke_agent.py $exe.FullName
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-package
+          path: printr-windows-agent/artifacts/*.zip*
+
+  linux-agent:
+    name: Linux tests and package
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - run: dotnet test printr-linux-agent/tests/PrintR.Linux.Tests.csproj -c Release
+      - name: Package Linux x64
+        shell: pwsh
+        run: ./printr-linux-agent/Package.ps1
+      - name: HTTPS integration checks
+        run: |
+          chmod +x printr-linux-agent/artifacts/PrintR-Agent-linux-x64/PrintR.Agent.Linux
+          python3 scripts/smoke_agent.py printr-linux-agent/artifacts/PrintR-Agent-linux-x64/PrintR.Agent.Linux
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-package
+          path: printr-linux-agent/artifacts/*.tar.gz*
 
   android:
     name: Android tests and debug APK
@@ -38,4 +74,8 @@ jobs:
         working-directory: printr-android
         run: |
           chmod +x gradlew
-          ./gradlew testDebugUnitTest assembleDebug --no-daemon
+          ./gradlew testDebugUnitTest assembleDebug lintDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-apk
+          path: printr-android/app/build/outputs/apk/debug/*.apk

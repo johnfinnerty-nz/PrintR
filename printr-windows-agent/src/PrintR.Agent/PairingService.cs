@@ -1,8 +1,10 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
+#if WINDOWS
 using System.Drawing;
 using System.Windows.Forms;
+#endif
 using QRCoder;
 
 namespace PrintR.Agent;
@@ -29,6 +31,7 @@ public sealed class PairingService(AgentSettingsStore settingsStore, TlsCertific
     public string CreatePayloadJson(IPAddress? preferredAddress = null) =>
         JsonSerializer.Serialize(CreatePayload(preferredAddress), new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
 
+#if WINDOWS
     public Bitmap CreateQrBitmap(IPAddress? preferredAddress = null)
     {
         using var generator = new QRCodeGenerator();
@@ -36,6 +39,7 @@ public sealed class PairingService(AgentSettingsStore settingsStore, TlsCertific
         using var qr = new QRCode(data);
         return qr.GetGraphic(8);
     }
+#endif
 }
 
 public static class NetworkInfo
@@ -80,6 +84,7 @@ public sealed class DiscoveryService(
                 try
                 {
                     var received = await udp.ReceiveAsync(stoppingToken);
+                    if (!NetworkGuards.IsPrivateOrLoopback(received.RemoteEndPoint.Address)) continue;
                     var text = System.Text.Encoding.UTF8.GetString(received.Buffer);
                     if (!string.Equals(text, Probe, StringComparison.Ordinal))
                     {
@@ -119,10 +124,11 @@ public static class FirewallDiagnostics
 {
     public static string GetWarning()
     {
-        return "If Android cannot connect, allow PrintR Agent through Windows Defender Firewall on Private networks. PrintR does not change firewall rules automatically.";
+        return OperatingSystem.IsWindows() ? "Allow PrintR Agent through Windows Defender Firewall on Private networks." : "Allow TCP 8787 (or your configured port) and UDP 8788 from your trusted LAN only.";
     }
 }
 
+#if WINDOWS
 public static class StartupManager
 {
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
@@ -134,7 +140,7 @@ public static class StartupManager
         if (key is null) return;
         if (enabled)
         {
-            key.SetValue(ValueName, Application.ExecutablePath);
+            key.SetValue(ValueName, '"' + Application.ExecutablePath + '"');
         }
         else
         {
@@ -142,3 +148,4 @@ public static class StartupManager
         }
     }
 }
+#endif

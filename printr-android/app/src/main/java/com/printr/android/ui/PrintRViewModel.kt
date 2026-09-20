@@ -19,6 +19,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 
 data class PrintRUiState(
     val pairing: PairingDetails = PairingDetails(),
@@ -38,8 +40,10 @@ class PrintRViewModel(app: Application) : AndroidViewModel(app) {
     private val store = PairingStore(app)
     private val client = PrintRClient()
     private val discovery = DiscoveryClient(app)
-    private val _state = MutableStateFlow(PrintRUiState(pairing = store.load(), pairedComputers = store.loadAll(), options = store.loadOptions()))
+    private val savedPairing = store.load()
+    private val _state = MutableStateFlow(PrintRUiState(pairing = savedPairing, pairedComputers = store.loadAll(), options = store.loadOptions(), connectionState = if (savedPairing.isComplete) ConnectionState.PairedOffline else ConnectionState.NotPaired))
     val state: StateFlow<PrintRUiState> = _state
+    private var uploadJob: Job? = null
 
     fun editPairing(details: PairingDetails) {
         _state.update { it.copy(pairing = details, connectionState = if (details.isComplete) ConnectionState.PairedOffline else ConnectionState.NotPaired) }
@@ -61,7 +65,8 @@ class PrintRViewModel(app: Application) : AndroidViewModel(app) {
 
     fun removePairing(id: String) {
         store.remove(id)
-        _state.update { it.copy(pairing = store.load(), pairedComputers = store.loadAll()) }
+        val selected = store.load()
+        _state.update { it.copy(pairing = selected, pairedComputers = store.loadAll(), printers = emptyList(), connectionState = if (selected.isComplete) ConnectionState.PairedOffline else ConnectionState.NotPaired, status = PrintStatus.Idle, statusMessage = "") }
     }
 
     fun chooseDefault(details: PairingDetails) {
@@ -81,7 +86,9 @@ class PrintRViewModel(app: Application) : AndroidViewModel(app) {
                 .onSuccess { found ->
                     _state.update { it.copy(discoveredComputers = found, status = PrintStatus.Idle, statusMessage = if (found.isEmpty()) "No PrintR Agents found. Discovery may be blocked by the network." else "Found ${found.size} computer(s).") }
                 }
-                .onFailure { e -> fail(e) }
+                .onFailure { _ ->
+                    _state.update { it.copy(status = PrintStatus.Idle, statusMessage = "Discovery is unavailable on this network. Open Computers to pair manually or scan a QR code.") }
+                }
         }
     }
 
@@ -110,7 +117,7 @@ class PrintRViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearPairings() {
         store.clear()
-        _state.update { it.copy(pairing = PairingDetails(), pairedComputers = emptyList(), connectionState = ConnectionState.NotPaired) }
+        _state.update { it.copy(pairing = PairingDetails(), pairedComputers = emptyList(), printers = emptyList(), connectionState = ConnectionState.NotPaired, status = PrintStatus.Idle, statusMessage = "") }
     }
 
     fun testConnection() {
@@ -155,9 +162,10 @@ class PrintRViewModel(app: Application) : AndroidViewModel(app) {
                     _state.update {
                         it.copy(
                             printers = printers,
+                            connectionState = ConnectionState.PairedReachable,
                             options = nextOptions,
                             status = if (it.status == PrintStatus.Failed) PrintStatus.Idle else it.status,
-                            statusMessage = if (printers.isEmpty()) "No printers returned by Windows Agent" else "Loaded ${printers.size} printer(s)"
+                            statusMessage = if (printers.isEmpty()) "No printers returned by PrintR Agent" else "Loaded ${printers.size} printer(s)"
                         )
                     }
                 }
@@ -166,9 +174,11 @@ class PrintRViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun uploadSelectedFiles() {
+        if (uploadJob?.isActive == true) return
         val snapshot = _state.value
+        if (snapshot.status in listOf(PrintStatus.Uploading, PrintStatus.Queued, PrintStatus.Converting, PrintStatus.Converted, PrintStatus.Printing)) return
         if (snapshot.selectedFiles.isEmpty()) return
-        viewModelScope.launch {
+        uploadJob = viewModelScope.launch {
             snapshot.selectedFiles.forEachIndexed { index, file ->
                 _state.update {
                     it.copy(
@@ -190,6 +200,7 @@ class PrintRViewModel(app: Application) : AndroidViewModel(app) {
                     pollJob(snapshot.pairing, response.jobId)
                     if (_state.value.status == PrintStatus.Failed) return@launch
                 } catch (e: Throwable) {
+                    if (e is CancellationException) throw e
                     fail(e)
                     return@launch
                 }
@@ -206,14 +217,14 @@ class PrintRViewModel(app: Application) : AndroidViewModel(app) {
         _state.update {
             it.copy(
                 status = PrintStatus.Failed,
-                statusMessage = "DOCX direct printing is not supported yet. Send it to your Windows computer instead."
+                statusMessage = "DOCX direct printing is not supported. Send it to your paired computer instead."
             )
         }
     }
 
     private suspend fun pollJob(pairing: PairingDetails, jobId: String) {
         if (jobId.isBlank()) return
-        repeat(90) {
+        repeat(660) {
             delay(1000)
             val job = client.job(pairing, jobId)
             val mapped = when (job.status.lowercase()) {
@@ -242,7 +253,7 @@ class PrintRViewModel(app: Application) : AndroidViewModel(app) {
             it.copy(
                 status = PrintStatus.Failed,
                 connectionState = ConnectionState.PairedOffline,
-                statusMessage = "Timed out while waiting for the Windows Agent to finish printing. Check Recent jobs on the computer and retry if needed."
+                statusMessage = "Timed out while waiting for PrintR Agent. Check the computer's print queue before retrying."
             )
         }
     }
@@ -252,11 +263,11 @@ class PrintRViewModel(app: Application) : AndroidViewModel(app) {
             e.message?.contains("Wrong", ignoreCase = true) == true -> e.message!!
             e.message?.contains("timeout", ignoreCase = true) == true -> "Computer offline or firewall blocked the connection."
             e.message?.contains("failed to connect", ignoreCase = true) == true -> "Computer offline or Windows Firewall blocked PrintR Agent."
-            e.message?.contains("certificate", ignoreCase = true) == true || e.message?.contains("TLS", ignoreCase = true) == true -> "The Windows Agent security certificate changed. Scan its QR code to pair again."
-            e.message?.contains("Unsupported", ignoreCase = true) == true -> "Unsupported file. PrintR supports PDF, PNG, JPG/JPEG, TXT, and DOCX."
+            e.message?.contains("certificate", ignoreCase = true) == true || e.message?.contains("TLS", ignoreCase = true) == true -> "The PrintR Agent security certificate changed or is missing. Check its pairing details and pair again."
+            e.message?.contains("Unsupported", ignoreCase = true) == true -> "Unsupported file. See Settings for supported formats."
             e.message?.contains("DOCX", ignoreCase = true) == true -> e.message!!
             else -> e.message ?: "Print failed."
         }
-        _state.update { it.copy(status = PrintStatus.Failed, statusMessage = message, connectionState = ConnectionState.PairedOffline) }
+        _state.update { it.copy(status = PrintStatus.Failed, statusMessage = message, connectionState = if (it.pairing.isComplete) ConnectionState.PairedOffline else ConnectionState.NotPaired) }
     }
 }

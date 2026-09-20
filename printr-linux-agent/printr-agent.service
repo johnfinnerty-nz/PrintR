@@ -1,0 +1,17 @@
+[Unit]
+Description=PrintR local printing agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart="@EXECUTABLE@"
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

@@ -3,36 +3,58 @@ using PrintR.Agent;
 using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
+using System.Threading.RateLimiting;
+#if WINDOWS
 using System.Windows.Forms;
+#endif
 
-using var singleInstanceMutex = new Mutex(true, "PrintR.Agent.SingleInstance", out var isFirstInstance);
+var settingsStore = new AgentSettingsStore();
+var settings = settingsStore.Load();
+var tlsCertificate = new TlsCertificateStore(settingsStore).LoadOrCreate();
+if (args.Contains("--pairing")) { Console.WriteLine(new PairingService(settingsStore, tlsCertificate).CreatePayloadJson()); return; }
+if (args.Contains("--status"))
+{
+    Console.WriteLine(JsonSerializer.Serialize(new { app = "PrintR Agent", version = AppInfo.Version, platform = Environment.OSVersion.Platform.ToString(), name = settings.FriendlyName, port = settings.Port, formats = FileValidation.SupportedExtensions, pdfPrintTool = PdfPrintTool.GetStatus(), configDirectory = AgentPaths.ConfigDirectory }, new JsonSerializerOptions { WriteIndented = true }));
+    return;
+}
+if (args.Contains("--help")) { Console.WriteLine("PrintR Agent: run without arguments to start. --headless: no desktop window. --status: show configuration. --pairing: print private pairing JSON. PRINTR_DATA_DIR: isolated configuration/data directory."); return; }
+
+var instanceKey = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(AgentPaths.ConfigDirectory)))[..16];
+using var singleInstanceMutex = new Mutex(false, "PrintR.Agent." + instanceKey);
+bool isFirstInstance;
+try { isFirstInstance = singleInstanceMutex.WaitOne(TimeSpan.FromSeconds(5)); }
+catch (AbandonedMutexException) { isFirstInstance = true; }
 if (!isFirstInstance)
 {
-    MessageBox.Show("PrintR Agent is already running. Check the system tray for the PrintR icon.", "PrintR Agent");
+#if WINDOWS
+    if (!args.Contains("--headless")) MessageBox.Show("PrintR Agent is already running. Check the system tray for the PrintR icon.", "PrintR Agent");
+    else Console.Error.WriteLine("PrintR Agent is already running for this configuration directory.");
+#else
+    Console.Error.WriteLine("PrintR Agent is already running for this configuration directory.");
+#endif
+    Environment.ExitCode = 1;
     return;
 }
 
 var builder = WebApplication.CreateBuilder(args);
-var settingsStore = new AgentSettingsStore();
-var settings = settingsStore.Load();
-var tlsCertificate = new TlsCertificateStore(settingsStore).LoadOrCreate();
 
 builder.WebHost.ConfigureKestrel(options =>
 {
+    options.Limits.MaxRequestBodySize = FileValidation.MaxUploadBytes + 1024 * 1024;
     options.Listen(IPAddress.Loopback, settings.Port, listen => listen.UseHttps(tlsCertificate.Certificate));
-    foreach (var address in GetPrivateListenAddresses())
+    foreach (var address in args.Contains("--loopback") ? [] : GetPrivateListenAddresses())
     {
         options.Listen(address, settings.Port, listen => listen.UseHttps(tlsCertificate.Certificate));
     }
 });
-builder.Services.Configure<FormOptions>(o => o.MultipartBodyLengthLimit = FileValidation.MaxUploadBytes);
+builder.Services.Configure<FormOptions>(o => { o.MultipartBodyLengthLimit = FileValidation.MaxUploadBytes; o.ValueLengthLimit = 4096; });
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase);
 builder.Services.AddSingleton(settingsStore);
 builder.Services.AddSingleton(settings);
 builder.Services.AddSingleton(tlsCertificate);
 builder.Services.AddSingleton<JobStore>();
 builder.Services.AddSingleton<PairingService>();
-builder.Services.AddHostedService<DiscoveryService>();
+if (!args.Contains("--loopback")) builder.Services.AddHostedService<DiscoveryService>();
 builder.Services.AddSingleton<LibreOfficeDocumentConverter>();
 builder.Services.AddSingleton<WordComDocumentConverter>();
 builder.Services.AddSingleton<IDocumentConverter>(sp =>
@@ -42,10 +64,22 @@ builder.Services.AddSingleton<IDocumentConverter>(sp =>
     ]));
 builder.Services.AddSingleton<IConversionBackendHealth>(sp => (CompositeDocumentConverter)sp.GetRequiredService<IDocumentConverter>());
 builder.Services.AddSingleton<IPrinterService, PrinterService>();
+builder.Services.AddSingleton<PrintQueue>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<PrintQueue>());
 builder.Services.AddLogging(o => o.AddConsole());
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = 429;
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+        RateLimitPartition.GetFixedWindowLimiter(context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ =>
+            new FixedWindowRateLimiterOptions { PermitLimit = 240, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+    options.AddPolicy("uploads", _ => RateLimitPartition.GetConcurrencyLimiter("uploads", _ =>
+        new ConcurrencyLimiterOptions { PermitLimit = 2, QueueLimit = 0 }));
+});
 
 var app = builder.Build();
-var spoolDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PrintR Agent", "Spool");
+app.UseRateLimiter();
+var spoolDir = AgentPaths.SpoolDirectory;
 Directory.CreateDirectory(spoolDir);
 
 app.MapGet("/health", (IConversionBackendHealth conversionHealth, TlsCertificateInfo certificate) => Results.Json(new
@@ -53,6 +87,8 @@ app.MapGet("/health", (IConversionBackendHealth conversionHealth, TlsCertificate
     app = "PrintR Agent",
     status = "ok",
     version = AppInfo.Version,
+    platform = OperatingSystem.IsWindows() ? "windows" : "linux",
+    maxUploadMegabytes = settingsStore.Load().MaxUploadMegabytes,
     scheme = "https",
     tlsFingerprint = certificate.Fingerprint,
     supportedFormats = FileValidation.SupportedExtensions.Select(e => e.TrimStart('.')),
@@ -151,11 +187,10 @@ app.MapGet("/printers", (IPrinterService printers) =>
     });
 });
 
-app.MapGet("/diagnostics", (AgentSettingsStore store, IPrinterService printers, IConversionBackendHealth conversionHealth, JobStore jobs) =>
+app.MapGet("/diagnostics", (AgentSettingsStore store, IPrinterService printers, IDocumentConverter converter, JobStore jobs) =>
 {
     var current = store.Load();
     var printerList = printers.GetPrinters();
-    var conversionJson = JsonSerializer.Serialize(conversionHealth.GetHealth(), new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
     return Results.Json(new
     {
         service = "running",
@@ -166,8 +201,7 @@ app.MapGet("/diagnostics", (AgentSettingsStore store, IPrinterService printers, 
         defaultPrinter = printerList.FirstOrDefault(p => p.IsDefault)?.Name,
         supportedFormats = FileValidation.SupportedExtensions.Select(e => e.TrimStart('.')),
         pdfPrintTool = PdfPrintTool.GetStatus(),
-        docxConverterAvailable = conversionJson.Contains("\"available\":true", StringComparison.OrdinalIgnoreCase) ||
-                                 conversionJson.Contains("\"available\": true", StringComparison.OrdinalIgnoreCase),
+        docxConverterAvailable = converter.CanConvert("document.docx", "pdf"),
         mockPrintMode = current.MockPrintMode || string.Equals(Environment.GetEnvironmentVariable("PRINTR_MOCK_PRINT"), "true", StringComparison.OrdinalIgnoreCase),
         recentErrors = jobs.Recent().Where(j => j.Status == JobStatus.Failed).Take(10).Select(j => new { j.JobId, j.FileName, j.ErrorMessage }),
         lastAndroidConnectionAttempt = ApiDiagnostics.LastConnectionAttempt,
@@ -183,14 +217,19 @@ app.MapGet("/jobs/{id:guid}", (Guid id, JobStore jobs) =>
         : Results.Json(ToJobResponse(job));
 });
 
-app.MapPost("/print", async (HttpRequest request, JobStore jobs, IPrinterService printerService, ILoggerFactory loggerFactory, CancellationToken cancellationToken) =>
+app.MapGet("/jobs", (JobStore jobs) => Results.Json(jobs.Recent().Select(ToJobResponse)));
+
+app.MapPost("/print", async (HttpRequest request, JobStore jobs, IPrinterService printerService, IDocumentConverter converter, PrintQueue queue, CancellationToken cancellationToken) =>
 {
     if (!request.HasFormContentType)
     {
         return Results.BadRequest(new { error = "Expected multipart form data." });
     }
 
-    var form = await request.ReadFormAsync(cancellationToken);
+    IFormCollection form;
+    try { form = await request.ReadFormAsync(cancellationToken); }
+    catch (Exception ex) when (ex is InvalidDataException or BadHttpRequestException)
+    { return Results.BadRequest(new { error = "Invalid or oversized multipart upload. Maximum file size is 100 MB." }); }
     var file = form.Files.GetFile("file");
     if (file is null)
     {
@@ -203,6 +242,17 @@ app.MapPost("/print", async (HttpRequest request, JobStore jobs, IPrinterService
     {
         return Results.BadRequest(new { error = validation.Message });
     }
+
+    var currentSettings = settingsStore.Load();
+    if (file.Length > currentSettings.MaxUploadMegabytes * 1024L * 1024L)
+        return Results.Json(new { error = $"File exceeds this agent's {currentSettings.MaxUploadMegabytes} MB limit." }, statusCode: 413);
+    if (!PrintRequestValidation.IsPageRangeValid(form["pageRange"]))
+        return Results.BadRequest(new { error = "Invalid page range. Use page numbers such as 1-3,7." });
+    var mock = currentSettings.MockPrintMode || Environment.GetEnvironmentVariable("PRINTR_MOCK_PRINT") == "true";
+    if (!mock && FileValidation.RequiresConversion(safeName) && !converter.CanConvert(safeName, "pdf"))
+        return Results.Json(new { error = "This document needs LibreOffice. Install it on the computer and restart the agent." }, statusCode: 422);
+    if (!mock && (FileValidation.RequiresConversion(safeName) || Path.GetExtension(safeName).Equals(".pdf", StringComparison.OrdinalIgnoreCase)) && !PdfPrintTool.GetStatus().Available)
+        return Results.Json(new { error = PdfPrintTool.GetStatus().Message }, statusCode: 422);
 
     var requestModel = new PrintRequest(
         EmptyToNull(form["printerName"]),
@@ -219,49 +269,52 @@ app.MapPost("/print", async (HttpRequest request, JobStore jobs, IPrinterService
     var jobDir = Path.Combine(spoolDir, job.JobId.ToString());
     Directory.CreateDirectory(jobDir);
     var storedPath = Path.Combine(jobDir, safeName);
-    await using (var stream = File.Create(storedPath))
+    try
     {
-        await file.CopyToAsync(stream, cancellationToken);
+        await using (var stream = File.Create(storedPath))
+        {
+            await file.CopyToAsync(stream, cancellationToken);
+        }
+        var content = FileValidation.ValidateContent(storedPath);
+        if (!content.Ok)
+        {
+            jobs.Update(job.JobId, JobStatus.Failed, content.Message);
+            Directory.Delete(jobDir, true);
+            return Results.BadRequest(new { error = content.Message });
+        }
+        if (!queue.TryEnqueue(new QueuedPrint(job.JobId, storedPath, requestModel)))
+        {
+            jobs.Update(job.JobId, JobStatus.Failed, "Print queue is full. Try again shortly.");
+            Directory.Delete(jobDir, true);
+            return Results.Json(new { error = "Print queue is full. Try again shortly." }, statusCode: 503);
+        }
     }
-
-    _ = Task.Run(async () =>
+    catch (Exception ex) when (ex is IOException or OperationCanceledException)
     {
-        var logger = loggerFactory.CreateLogger("PrintJob");
-        try
-        {
-            if (!string.Equals(fileType, "docx", StringComparison.OrdinalIgnoreCase))
-            {
-                jobs.Update(job.JobId, JobStatus.Printing, "Printing");
-            }
-            var warnings = await printerService.PrintAsync(
-                storedPath,
-                requestModel,
-                CancellationToken.None,
-                (status, message) => jobs.Update(job.JobId, status, message));
-            jobs.Update(job.JobId, JobStatus.Completed, "Printed successfully", warnings);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Print job {JobId} failed", job.JobId);
-            ApiDiagnostics.RecordError($"Print job {job.JobId} failed: {ex.Message}");
-            jobs.Update(job.JobId, JobStatus.Failed, ex.Message);
-        }
-        finally
-        {
-            if (!SpoolCleanup.ShouldKeepFiles(settings))
-            {
-                try { SpoolCleanup.CleanupJobFolder(jobDir, settings); } catch (Exception ex) { logger.LogWarning(ex, "Could not delete spool folder {Path}", jobDir); }
-            }
-        }
-    });
+        jobs.Update(job.JobId, JobStatus.Failed, "Upload interrupted before it could be queued.");
+        if (Directory.Exists(jobDir)) Directory.Delete(jobDir, true);
+        throw;
+    }
 
     var acceptedMessage = string.Equals(fileType, "docx", StringComparison.OrdinalIgnoreCase)
         ? "DOCX print job accepted"
         : "Print job accepted";
-    return Results.Json(new { jobId = job.JobId, status = "queued", message = acceptedMessage });
-});
+    return Results.Json(new { jobId = job.JobId, status = "queued", message = acceptedMessage }, statusCode: 202);
+}).RequireRateLimiting("uploads");
 
-var webTask = app.RunAsync();
+try { await app.StartAsync(); }
+catch (Exception ex)
+{
+    Console.Error.WriteLine($"PrintR could not start: {ex.Message}");
+#if WINDOWS
+    if (!args.Contains("--headless")) MessageBox.Show($"PrintR could not start. Check that port {settings.Port} is available.\n\n{ex.Message}", "PrintR Agent", MessageBoxButtons.OK, MessageBoxIcon.Error);
+#endif
+    Environment.ExitCode = 1;
+    return;
+}
+#if WINDOWS
+if (!args.Contains("--headless"))
+{
 var uiThread = new Thread(() =>
 {
     ApplicationConfiguration.Initialize();
@@ -278,7 +331,11 @@ var uiThread = new Thread(() =>
 });
 uiThread.SetApartmentState(ApartmentState.STA);
 uiThread.Start();
-await webTask;
+}
+#else
+Console.WriteLine($"PrintR {AppInfo.Version} is ready on port {settings.Port}. Use --pairing locally to retrieve pairing details.");
+#endif
+await app.WaitForShutdownAsync();
 
 static string? EmptyToNull(object? value)
 {

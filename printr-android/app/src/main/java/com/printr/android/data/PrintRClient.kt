@@ -34,6 +34,7 @@ class PrintRClient(
         file: SelectedFile,
         options: PrintOptions
     ): PrintJobResponse = withContext(Dispatchers.IO) {
+        require(SupportedDocumentTypes.isSupported(file.displayName)) { "Unsupported file. Choose PDF, an image, text, CSV or a supported Office document." }
         val cached = copyUriToCache(context, file)
         try {
             val body = buildMultipartBody(cached, file.displayName, file.mimeType, options)
@@ -138,16 +139,18 @@ class PrintRClient(
     private fun toUsefulError(code: Int, body: String): String = when (code) {
         401 -> "Wrong token. Re-pair this computer from PrintR Agent."
         403 -> "Connection blocked. Check that both devices are on the same Wi-Fi and Windows Firewall allows PrintR on Private networks."
-        404 -> "Print job was not found on the Windows computer."
+        404 -> "Print job was not found on the paired computer."
         415 -> "Unsupported file type."
-        else -> body.ifBlank { "Request failed with HTTP $code" }
+        413 -> "File exceeds the computer's upload limit (at most 100 MB)."
+        else -> runCatching { JSONObject(body).optString("error") }.getOrNull()?.takeIf { it.isNotBlank() }
+            ?: body.ifBlank { "Request failed with HTTP $code" }
     }
 
     private fun clientFor(pairing: PairingDetails): OkHttpClient {
         if (!pairing.scheme.equals("https", ignoreCase = true)) return httpClient
 
         val fingerprint = normalizeTlsFingerprint(pairing.tlsFingerprint.orEmpty())
-        require(fingerprint.length == 64) { "This secure pairing is missing the TLS fingerprint. Scan the Windows Agent QR code again." }
+        require(fingerprint.length == 64) { "This secure pairing is missing the TLS fingerprint. Check the PrintR Agent pairing details." }
         val trustManager = FingerprintTrustManager(fingerprint)
         val sslContext = SSLContext.getInstance("TLS")
         sslContext.init(null, arrayOf(trustManager), null)
@@ -160,12 +163,24 @@ class PrintRClient(
 
     private fun copyUriToCache(context: Context, selected: SelectedFile): File {
         val safeName = sanitizeUploadFileName(selected.displayName)
-        val out = File(context.cacheDir, "upload-$safeName")
+        val out = File.createTempFile("upload-", "-$safeName", context.cacheDir)
+        try {
         context.contentResolver.openInputStream(selected.uri).use { input ->
             requireNotNull(input) { "Could not open selected file." }
-            out.outputStream().use { output -> input.copyTo(output) }
+            out.outputStream().use { output ->
+                val buffer = ByteArray(8192)
+                var total = 0L
+                var count: Int
+                while (input.read(buffer).also { count = it } != -1) {
+                    total += count
+                    require(total <= 100L * 1024 * 1024) { "File exceeds the 100 MB upload limit." }
+                    output.write(buffer, 0, count)
+                }
+                require(total > 0) { "Selected file is empty." }
+            }
         }
         return out
+        } catch (e: Exception) { out.delete(); throw e }
     }
 
     internal fun sanitizeUploadFileName(name: String): String =
@@ -210,13 +225,13 @@ private class FingerprintTrustManager(private val expectedFingerprint: String) :
 
     override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {
         val certificate = chain.firstOrNull()
-            ?: throw CertificateException("The Windows Agent did not provide a TLS certificate.")
+            ?: throw CertificateException("PrintR Agent did not provide a TLS certificate.")
         certificate.checkValidity()
         val actualFingerprint = MessageDigest.getInstance("SHA-256")
             .digest(certificate.encoded)
             .joinToString("") { "%02X".format(Locale.US, it.toInt() and 0xFF) }
         if (!actualFingerprint.equals(expectedFingerprint, ignoreCase = true)) {
-            throw CertificateException("The Windows Agent certificate no longer matches this pairing. Scan its QR code to pair again.")
+            throw CertificateException("The PrintR Agent certificate no longer matches this pairing. Check its pairing details and pair again.")
         }
     }
 }

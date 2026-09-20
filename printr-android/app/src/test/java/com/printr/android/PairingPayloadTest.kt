@@ -23,7 +23,7 @@ class PairingPayloadTest {
 
     @Test
     fun validates_manual_pairing() {
-        assertEquals("Enter the Windows computer IP address.", PairingPayloadParser.validateManual("", "8787", "0123456789abcdef"))
+        assertEquals("Enter the computer IP address.", PairingPayloadParser.validateManual("", "8787", "0123456789abcdef"))
         assertEquals("Enter a valid port.", PairingPayloadParser.validateManual("192.168.1.10", "99999", "0123456789abcdef"))
         assertEquals("Pairing token looks too short.", PairingPayloadParser.validateManual("192.168.1.10", "8787", "short"))
         assertEquals("Enter the TLS fingerprint shown by PrintR Agent.", PairingPayloadParser.validateManual("192.168.1.10", "8787", "0123456789abcdef"))

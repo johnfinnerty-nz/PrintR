@@ -1,0 +1,42 @@
+name: Build signed release candidates
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Validate signing secrets and build
+        env:
+          KEYSTORE_BASE64: ${{ secrets.PRINTR_KEYSTORE_BASE64 }}
+          PRINTR_STORE_PASSWORD: ${{ secrets.PRINTR_STORE_PASSWORD }}
+          PRINTR_KEY_ALIAS: ${{ secrets.PRINTR_KEY_ALIAS }}
+          PRINTR_KEY_PASSWORD: ${{ secrets.PRINTR_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${KEYSTORE_BASE64:?Configure PRINTR_KEYSTORE_BASE64}"
+          : "${PRINTR_STORE_PASSWORD:?Configure PRINTR_STORE_PASSWORD}"
+          : "${PRINTR_KEY_ALIAS:?Configure PRINTR_KEY_ALIAS}"
+          : "${PRINTR_KEY_PASSWORD:?Configure PRINTR_KEY_PASSWORD}"
+          export PRINTR_KEYSTORE="$RUNNER_TEMP/printr.jks"
+          trap 'rm -f "$PRINTR_KEYSTORE"' EXIT
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$PRINTR_KEYSTORE"
+          chmod 600 "$PRINTR_KEYSTORE"
+          cd printr-android
+          chmod +x gradlew
+          ./gradlew testReleaseUnitTest lintRelease assembleRelease --no-daemon
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify app/build/outputs/apk/release/app-release.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed-android-release-candidate
+          path: printr-android/app/build/outputs/apk/release/app-release.apk

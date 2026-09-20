@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>PrintR.Agent.Linux</AssemblyName>
+    <Version>1.1.0</Version>
+    <EnableDefaultContentItems>false</EnableDefaultContentItems>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="tests/**/*.cs" />
+    <Compile Include="../printr-windows-agent/src/PrintR.Agent/*.cs" Exclude="../printr-windows-agent/src/PrintR.Agent/AgentForm.cs;../printr-windows-agent/src/PrintR.Agent/PrinterService.cs" Link="Shared/%(Filename)%(Extension)" />
+    <PackageReference Include="QRCoder" Version="1.6.0" />
+  </ItemGroup>
+</Project>

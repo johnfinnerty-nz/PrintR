@@ -39,7 +39,8 @@ class DiscoveryClient(private val context: Context) {
                 socket.soTimeout = timeoutMs
                 val probe = "PRINTR_DISCOVER_V1".toByteArray()
                 broadcastTargets().forEach { target ->
-                    socket.send(DatagramPacket(probe, probe.size, target, 8788))
+                    try { socket.send(DatagramPacket(probe, probe.size, target, 8788)) }
+                    catch (_: java.net.SocketException) { /* Some networks block broadcasts. Try other interfaces and the subnet fallback. */ }
                 }
                 val deadline = System.currentTimeMillis() + timeoutMs
                 while (System.currentTimeMillis() < deadline) {

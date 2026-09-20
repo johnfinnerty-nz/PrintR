@@ -16,3 +16,5 @@ artifacts/
 .idea/
 *.user
 *.suo
+*.jks
+*.keystore

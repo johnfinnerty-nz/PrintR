@@ -23,7 +23,7 @@ object PairingPayloadParser {
     }
 
     fun validateManual(host: String, port: String, token: String, tlsFingerprint: String? = null, scheme: String = "https"): String? = when {
-        host.isBlank() -> "Enter the Windows computer IP address."
+        host.isBlank() -> "Enter the computer IP address."
         (port.toIntOrNull() ?: -1) !in 1..65535 -> "Enter a valid port."
         token.length < 16 -> "Pairing token looks too short."
         scheme.lowercase() !in setOf("http", "https") -> "Enter a valid connection type."
