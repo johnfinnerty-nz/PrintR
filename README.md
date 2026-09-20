@@ -47,7 +47,7 @@ For controlled testing, download the latest build here:
 
 The Windows download is self-contained. Unzip it, launch `PrintR.Agent.exe`, and allow it through Windows Defender Firewall on Private networks when prompted. Android may ask you to allow installation from the app you used to open the APK.
 
-Version 1.1.0 includes a release-signed Android APK. Earlier debug-signed Android builds must be uninstalled before installing it, which clears saved pairings and preferences. The Windows executable is still unsigned. See the [1.1.0 release notes](docs/releases/1.1.0.md) for setup, validation and limitations.
+Android 1.1.1 reduces corner rounding and fixes the Computers tab wrapping on narrow screens. It uses the same release signing key as 1.1.0, so it can update that version without uninstalling. Earlier debug-signed Android builds must be uninstalled first, which clears saved pairings and preferences. Windows and Linux agents remain at 1.1.0; Windows is still unsigned. See the [1.1.1 release notes](docs/releases/1.1.1.md) for details.
 
 ## Run The Windows Agent
 

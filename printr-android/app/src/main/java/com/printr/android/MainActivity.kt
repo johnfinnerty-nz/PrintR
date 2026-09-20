@@ -27,7 +27,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
+import com.printr.android.ui.PrintRButton as Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.DropdownMenu
@@ -35,11 +35,11 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import com.printr.android.ui.PrintROutlinedButton as OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import com.printr.android.ui.PrintRTextButton as TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -72,6 +72,8 @@ import com.printr.android.data.SupportedDocumentTypes
 import com.printr.android.data.selectedFileFromUri
 import com.printr.android.print.PdfPrintAdapter
 import com.printr.android.ui.PrintRViewModel
+import com.printr.android.ui.PrintRNavigation
+import com.printr.android.ui.PrintRShapes
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 
@@ -178,7 +180,7 @@ private fun PrintRTheme(themeMode: ThemeMode, content: @Composable () -> Unit) {
             WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = !useDark
         }
     }
-    MaterialTheme(colorScheme = if (useDark) darkColorScheme(primary = Color(0xFF79D5C9), primaryContainer = Color(0xFF004F49)) else lightColorScheme(primary = Color(0xFF007069), primaryContainer = Color(0xFFD6F3ED), secondaryContainer = Color(0xFFE8EFF5), background = Color(0xFFF6F8FA), surface = Color(0xFFF6F8FA)), content = content)
+    MaterialTheme(shapes = PrintRShapes, colorScheme = if (useDark) darkColorScheme(primary = Color(0xFF79D5C9), primaryContainer = Color(0xFF004F49)) else lightColorScheme(primary = Color(0xFF007069), primaryContainer = Color(0xFFD6F3ED), secondaryContainer = Color(0xFFE8EFF5), background = Color(0xFFF6F8FA), surface = Color(0xFFF6F8FA)), content = content)
 }
 
 @Composable
@@ -231,12 +233,7 @@ private fun PrintRApp(
                 Text("Local printing, made simple", style = MaterialTheme.typography.bodySmall)
             }
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf("Print", "Computers", "Settings").forEach { tab ->
-                if (selectedTab == tab) Button(onClick = { selectedTab = tab }, modifier = Modifier.weight(1f)) { Text(tab) }
-                else OutlinedButton(onClick = { selectedTab = tab }, modifier = Modifier.weight(1f)) { Text(tab) }
-            }
-        }
+        PrintRNavigation(selectedTab = selectedTab, onSelect = { selectedTab = it })
         ConnectionBanner(state.connectionState, state.statusMessage)
 
         if (selectedTab == "Computers") {
@@ -319,7 +316,7 @@ private fun PrintRApp(
             HorizontalDivider()
             Text("Supported files", style = MaterialTheme.typography.titleMedium)
             Text("PDF, PNG, JPG, BMP, TXT, CSV, DOCX, XLSX, PPTX, ODT, ODS, ODP and RTF. Office documents need LibreOffice on the computer. CSV prints as plain text. Maximum upload: 100 MB.", style = MaterialTheme.typography.bodySmall)
-            Text("PrintR 1.1.0", style = MaterialTheme.typography.bodySmall)
+            Text("PrintR ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall)
         if (state.pairedComputers.isNotEmpty()) {
             TextButton(modifier = Modifier.fillMaxWidth(), onClick = { confirmClear = true }, enabled = !busy) { Text("Clear saved pairings") }
         }

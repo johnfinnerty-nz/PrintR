@@ -14,6 +14,18 @@ The Overview and Recent jobs images are the user-provided captures. The header a
 
 ## Android
 
+### Android 1.1.1 layout correction
+
+Real API 35 emulator captures at a 360 dp viewport (1080 by 2340 pixels). The light capture uses normal text size; the dark Print and Computers captures use 1.3x font scaling. These show smaller corners and complete navigation labels. The manual pairing fields are empty.
+
+<p>
+  <img src="screenshots/android-1.1.1-light-360.png" alt="PrintR 1.1.1 light Print screen with subtle corners and complete tab labels" width="280">
+  <img src="screenshots/android-1.1.1-dark-360.png" alt="PrintR 1.1.1 dark Print screen with enlarged text and Computers on one line" width="280">
+  <img src="screenshots/android-1.1.1-computers-360.png" alt="PrintR 1.1.1 Computers tab selected with enlarged text" width="280">
+</p>
+
+### Android 1.1.0 workflow captures
+
 Captured at 1080 by 2400 pixels from the API 35 emulator. The phone paired over pinned HTTPS with the local Windows test agent, enumerated its printers and submitted a real XLSX upload in mock mode.
 
 <p>
